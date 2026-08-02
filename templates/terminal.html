@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ repo }} · Terminal · Anchor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+</head>
+<body class="terminal-page">
+  <div class="wrap terminal-wrap">
+    <header class="header terminal-header">
+      <div>
+        <h1 class="brand"><a href="/" class="brand-link">Anchor</a></h1>
+        <p class="host-line">
+          <span class="mono">{{ repo }}</span>
+          · session <span class="mono">{{ session }}</span>
+        </p>
+      </div>
+      <nav class="nav">
+        <a href="/">Projects</a>
+        <a href="/settings">Settings</a>
+        <form method="post" action="/logout" class="inline-form">
+          <button type="submit" class="linkish">Sign out</button>
+        </form>
+      </nav>
+    </header>
+
+    {% if !on_disk %}
+      <div class="flash error">Project is not on disk. Sync it from the dashboard first.</div>
+    {% elif !window_exists %}
+      <div class="flash error">
+        No tmux window for <span class="mono">{{ repo }}</span>.
+        <a href="/">Sync the project</a> to create Cursor / OpenCode panes.
+      </div>
+    {% else %}
+      <div class="term-tabs" role="tablist">
+        <a
+          class="term-tab{% if agent == "cursor" %} active{% endif %}"
+          href="/projects/{{ repo }}/terminal?agent=cursor"
+          role="tab"
+          aria-selected="{% if agent == "cursor" %}true{% else %}false{% endif %}"
+        >Cursor</a>
+        <a
+          class="term-tab{% if agent == "opencode" %} active{% endif %}"
+          href="/projects/{{ repo }}/terminal?agent=opencode"
+          role="tab"
+          aria-selected="{% if agent == "opencode" %}true{% else %}false{% endif %}"
+        >OpenCode</a>
+      </div>
+      <p class="lead term-lead">
+        Attached to pane <span class="mono">{{ pane_label }}</span> (zoomed).
+        Type in the agent TUI below — this is your chat surface.
+      </p>
+      <div id="term" class="term-surface" aria-label="Agent terminal"></div>
+      <p id="term-status" class="term-status" aria-live="polite">Connecting…</p>
+    {% endif %}
+  </div>
+
+  {% if on_disk && window_exists %}
+  <script>
+    (function () {
+      const repo = {{ repo_js|safe }};
+      const agent = {{ agent_js|safe }};
+      const status = document.getElementById("term-status");
+      const el = document.getElementById("term");
+      if (!el || typeof Terminal === "undefined") {
+        if (status) status.textContent = "xterm.js failed to load";
+        return;
+      }
+
+      const term = new Terminal({
+        cursorBlink: true,
+        fontFamily: '"IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace',
+        fontSize: 14,
+        theme: {
+          background: "#0c1014",
+          foreground: "#e7ecf1",
+          cursor: "#2a6f5e",
+          selectionBackground: "rgba(42, 111, 94, 0.35)",
+        },
+      });
+      const fit = new FitAddon.FitAddon();
+      term.loadAddon(fit);
+      term.open(el);
+      fit.fit();
+
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(
+        proto + "//" + location.host + "/ws/terminal/" + encodeURIComponent(repo) + "/" + encodeURIComponent(agent)
+      );
+      ws.binaryType = "arraybuffer";
+
+      function sendSize() {
+        fit.fit();
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+        }
+      }
+
+      ws.onopen = function () {
+        status.textContent = "Connected";
+        sendSize();
+        term.focus();
+      };
+      ws.onclose = function () {
+        status.textContent = "Disconnected";
+      };
+      ws.onerror = function () {
+        status.textContent = "WebSocket error";
+      };
+      ws.onmessage = function (ev) {
+        if (ev.data instanceof ArrayBuffer) {
+          term.write(new Uint8Array(ev.data));
+        } else {
+          term.write(ev.data);
+        }
+      };
+      term.onData(function (data) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(new TextEncoder().encode(data));
+        }
+      });
+      window.addEventListener("resize", sendSize);
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>

@@ -9,6 +9,7 @@
         <th class="hide-sm">Sync</th>
         <th class="hide-sm">Tmux</th>
         <th></th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -57,6 +58,13 @@
             <span class="chip ok">window</span>
           {% else %}
             <span class="chip meta">none</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if p.tmux_window_exists %}
+            <a class="btn-link" href="/projects/{{ p.name }}/terminal?agent=cursor">Terminal</a>
+          {% else %}
+            <span class="chip meta" title="Sync to create tmux panes">no term</span>
           {% endif %}
         </td>
         <td>

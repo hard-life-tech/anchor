@@ -107,6 +107,22 @@ pub async fn window_exists(session: &str, window: &str) -> Result<bool> {
     Ok(out.stdout.lines().any(|l| l.trim() == window))
 }
 
+/// Select a pane and zoom it so a single-client attach shows one agent TUI.
+pub async fn ensure_pane_zoomed(session: &str, window: &str, pane_index: &str) -> Result<()> {
+    let target = format!("{session}:{window}.{pane_index}");
+    let out = shell::run_tmux(&["select-pane", "-t", &target]).await?;
+    out.ensure_success("tmux select-pane")?;
+
+    let flag = shell::run_tmux(&["display-message", "-p", "-t", &target, "#{window_zoomed_flag}"])
+        .await?;
+    if flag.success() && flag.stdout.trim() == "1" {
+        return Ok(());
+    }
+    let out = shell::run_tmux(&["resize-pane", "-t", &target, "-Z"]).await?;
+    out.ensure_success("tmux resize-pane -Z")?;
+    Ok(())
+}
+
 async fn ensure_two_panes(target: &str, cursor_cwd: &str, opencode_cwd: &str) -> Result<()> {
     let count = pane_count(target).await?;
     if count < 2 {
