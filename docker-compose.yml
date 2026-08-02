@@ -2,6 +2,8 @@ services:
   anchor:
     build: .
     restart: unless-stopped
+    # Required in `.env` (see `.env.example`): GITHUB_TOKEN, GITHUB_USER.
+    # Optional overrides below; defaults match PROJECT.md §6.
     env_file: .env
     environment:
       - PROJECTS_DIR=/home/agent/projects
@@ -12,6 +14,12 @@ services:
       - tmux-sockets:/tmp
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     # If deploying behind Traefik/Coolify, drop the ports mapping above and
     # attach this service to your existing proxy network + labels instead.
     # Keep it off the public internet either way — Tailscale only.
