@@ -23,6 +23,7 @@ docker compose up --build -d
 ## Docs
 
 - [PROJECT.md](PROJECT.md) — product source of truth
+- [CONTRIBUTING.md](CONTRIBUTING.md) — setup and PR norms
 - [docs/](docs/README.md) — features, ADRs, API contract, deployment
 
 ## Security

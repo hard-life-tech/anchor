@@ -8,7 +8,7 @@ Status as of 2026-08-02. v1 scope is defined in [`PROJECT.md`](../PROJECT.md).
 |-------|------|------|--------|
 | **0** | Docs + agent safety | Docs tree, ADRs, agent permission configs | Done |
 | **1** | Core scaffold | Rust crate, axum routes, git/tmux modules, Docker build | In progress |
-| **2** | MVP acceptance | Meet §14 acceptance criteria in `PROJECT.md` | Not started |
+| **2** | MVP acceptance | Meet §14 acceptance criteria in `PROJECT.md` | In progress |
 | **3** | Hardening | Secrets audit, non-root verification, rate-limit cache | Not started |
 | **4** | Open source launch | Public repo under Hard Life Tech, LICENSE, CONTRIBUTING | In progress |
 | **5** | Cloud / SaaS (private) | Multi-tenant management product on top of Core | Future |
@@ -29,14 +29,14 @@ Status as of 2026-08-02. v1 scope is defined in [`PROJECT.md`](../PROJECT.md).
 4. [x] Tmux module: session/window/pane ensure (idempotent, never kill live panes)
 5. [x] GitHub client: list repos (in-memory cache)
 6. [x] HTTP API per [api-contract.md](api-contract.md)
-7. [ ] Askama + htmx dashboard (minimal HTML placeholder for now)
+7. [x] Askama + htmx dashboard
 8. [ ] `docker compose up` smoke test with `.env`
 
 ### Phase 2 — MVP acceptance
-- [ ] Fresh sync creates `.bare` + both worktrees + tmux window
-- [ ] Re-sync is idempotent (no duplicate windows, no force overwrite)
-- [ ] Dirty/diverged worktrees reported, left untouched
-- [ ] `/api/projects` accurate after container restart (tmux gone, disk intact)
+- [x] Fresh sync creates `.bare` + both worktrees + tmux window (unit-covered; Compose e2e pending)
+- [x] Re-sync is idempotent (no duplicate windows, no force overwrite) (unit-covered)
+- [x] Dirty/diverged worktrees reported, left untouched (dirty covered; diverged path present)
+- [ ] `/api/projects` accurate after container restart (tmux gone, disk intact) — Compose verify pending
 - [ ] Healthz + Compose bring-up with only token + user
 
 ### Phase 3 — Hardening
@@ -47,7 +47,8 @@ Status as of 2026-08-02. v1 scope is defined in [`PROJECT.md`](../PROJECT.md).
 
 ### Phase 4 — OSS launch
 - [x] `gh` auth available for Hard Life Tech
-- [x] Remote + README (badges / issue templates still open)
+- [x] Remote + README
+- [x] CONTRIBUTING + basic issue templates
 - [ ] GitHub Projects (or Enterprise Projects) board for Core roadmap — see [project-management.md](conceptual/workflow/project-management.md)
 
 ### Phase 5 — Management SaaS (private)
@@ -65,10 +66,10 @@ Status as of 2026-08-02. v1 scope is defined in [`PROJECT.md`](../PROJECT.md).
 | T04 | Implement git worktree sync (TDD) | P0 | Done |
 | T05 | Implement tmux ensure (TDD) | P0 | Done |
 | T06 | Wire sync API + GitHub list | P1 | Done |
-| T07 | Minimal dashboard | P2 | Partial |
+| T07 | Minimal dashboard | P2 | Done |
 | T08 | Compose e2e on VPS | P1 | T06 |
 | T09 | Create GH org/repo when `gh` ready | P1 | Done |
-| T10 | Publish OSS LICENSE + CONTRIBUTING | P2 | Partial |
+| T10 | Publish OSS LICENSE + CONTRIBUTING | P2 | Done |
 
 ## Out of scope (tracked, not scheduled)
 

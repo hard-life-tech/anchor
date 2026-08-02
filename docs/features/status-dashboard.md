@@ -16,6 +16,6 @@ Let the operator see on-disk / git / tmux state from a phone browser and trigger
 
 ## Acceptance
 
-- [ ] API matches [api-contract.md](../api-contract.md)
-- [ ] Dashboard usable on narrow viewports
-- [ ] Status correct with tmux absent
+- [x] API matches [api-contract.md](../api-contract.md)
+- [x] Dashboard usable on narrow viewports (Askama + htmx)
+- [x] Status correct with tmux absent
