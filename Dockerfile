@@ -6,8 +6,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Cache dependencies before copying sources.
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir src && echo 'fn main() {}' > src/main.rs \
+    && cargo build --release \
+    && rm -rf src
+
 COPY . .
-RUN cargo build --release
+RUN touch src/main.rs \
+    && rm -f target/release/anchor target/release/deps/anchor-* \
+    && cargo build --release
 
 # ---------- runtime stage ----------
 FROM debian:bookworm-slim
