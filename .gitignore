@@ -3,3 +3,6 @@
 .env.local
 *.pem
 .DS_Store
+# editor / OS
+*.swp
+*~
