@@ -56,7 +56,11 @@ List repos visible to `GITHUB_TOKEN` (authenticated `GET /user/repos`: private, 
 
 ## `GET /api/projects`
 
-List Anchor projects (SQLite + disk) with member counts, worktree rollup, and tmux status.
+List Anchor projects (SQLite + disk) with member counts, worktree **presence**, and tmux status.
+
+List inventory is **cheap**: filesystem + DB + one tmux `list-windows` (short in-memory TTL). It does **not** call GitHub or spawn per-row `git status`. `members[].private` comes from stored `project_repos`. Worktree entries on the list mean the agent dir exists; ahead/behind/dirty are zeros until a deep read.
+
+Deep git status (dirty / ahead / behind) is available on `GET /api/projects/{slug}` and the project detail page.
 
 **Response `200`:**
 
