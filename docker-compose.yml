@@ -1,0 +1,36 @@
+services:
+  anchor:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - PROJECTS_DIR=/home/agent/projects
+      - TMUX_SESSION=agents
+      - PORT=8080
+    volumes:
+      - agent-home:/home/agent
+      - tmux-sockets:/tmp
+    ports:
+      - "8080:8080"
+    # If deploying behind Traefik/Coolify, drop the ports mapping above and
+    # attach this service to your existing proxy network + labels instead.
+    # Keep it off the public internet either way — Tailscale only.
+
+  # Optional: browser terminal onto the same tmux session Anchor creates.
+  # Shares the tmux socket dir with anchor so it can attach without SSH.
+  # Requires the sidecar to run as the same uid as the anchor container
+  # (1000 by default) so it looks in the same /tmp/tmux-1000 socket dir.
+  #
+  # ttyd:
+  #   image: ghcr.io/tsl0922/ttyd:latest
+  #   restart: unless-stopped
+  #   command: ["ttyd", "-W", "tmux", "attach", "-t", "agents"]
+  #   user: "1000:1000"
+  #   volumes:
+  #     - tmux-sockets:/tmp
+  #   ports:
+  #     - "7681:7681"
+
+volumes:
+  agent-home:
+  tmux-sockets:
