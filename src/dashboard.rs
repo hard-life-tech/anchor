@@ -18,13 +18,13 @@ use crate::AppState;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(dashboard))
-        .route("/static/style.css", get(style_css))
         .route("/partials/projects", get(partial_projects))
         .route("/partials/repos", get(partial_repos))
         .route("/partials/projects/{repo}/sync", post(partial_sync))
 }
 
-async fn style_css() -> impl IntoResponse {
+/// Public (no auth) — needed by the login page.
+pub async fn style_css() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
         include_str!("../static/style.css"),
@@ -156,14 +156,15 @@ async fn run_sync(state: &AppState, repo: &str) -> Result<String, AppError> {
 
     let cursor_cwd = git::worktree_dir(&state.config.projects_dir, repo, "cursor");
     let opencode_cwd = git::worktree_dir(&state.config.projects_dir, repo, "opencode");
+    let (cursor_cmd, opencode_cmd) = crate::settings::effective_cmds(state);
 
     if let Err(e) = tmux::ensure_project_window(
         &state.config.tmux_session,
         repo,
         &cursor_cwd.to_string_lossy(),
         &opencode_cwd.to_string_lossy(),
-        &state.config.cursor_cmd,
-        &state.config.opencode_cmd,
+        &cursor_cmd,
+        &opencode_cmd,
     )
     .await
     {

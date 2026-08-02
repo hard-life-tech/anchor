@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings · Anchor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="wrap">
+    <header class="header">
+      <div>
+        <h1 class="brand"><a href="/" class="brand-link">Anchor</a></h1>
+        <p class="host-line">Agent configuration</p>
+      </div>
+      <nav class="nav">
+        <a href="/">Projects</a>
+        <a href="/settings" aria-current="page">Settings</a>
+        <form method="post" action="/logout" class="inline-form">
+          <button type="submit" class="linkish">Sign out</button>
+        </form>
+      </nav>
+    </header>
+
+    {% if saved %}
+      <div class="flash" role="status">Settings saved.</div>
+    {% endif %}
+    {% match error %}
+      {% when Some with (msg) %}
+        <div class="flash error" role="alert">{{ msg }}</div>
+      {% when None %}
+    {% endmatch %}
+
+    <section class="section" aria-labelledby="agents-heading">
+      <h2 id="agents-heading">Cursor &amp; OpenCode</h2>
+      <p class="lead">
+        Overrides persist in SQLite and replace env defaults at sync time.
+        Leave a command blank to keep the env default
+        (<span class="mono">{{ env_cursor }}</span> /
+        <span class="mono">{{ env_opencode }}</span>).
+      </p>
+
+      <form method="post" action="/settings" class="settings-form">
+        <fieldset class="agent-block">
+          <legend>Cursor (left pane)</legend>
+          <label class="check">
+            <input type="checkbox" name="cursor_enabled" value="1"{% if cursor_enabled %} checked{% endif %}>
+            Launch on sync
+          </label>
+          <label class="field">
+            <span>Command</span>
+            <input type="text" name="cursor_cmd" value="{{ cursor_cmd }}" placeholder="{{ env_cursor }}" spellcheck="false" class="mono">
+          </label>
+          <label class="field">
+            <span>Extra args</span>
+            <input type="text" name="cursor_args" value="{{ cursor_args }}" placeholder="optional flags / model" spellcheck="false" class="mono">
+          </label>
+          <p class="hint">
+            Install Cursor CLI on the host/container (image runs the official installer).
+            Authenticate inside the terminal pane — Anchor never passes <span class="mono">GITHUB_TOKEN</span> into agent env.
+          </p>
+        </fieldset>
+
+        <fieldset class="agent-block">
+          <legend>OpenCode (right pane)</legend>
+          <label class="check">
+            <input type="checkbox" name="opencode_enabled" value="1"{% if opencode_enabled %} checked{% endif %}>
+            Launch on sync
+          </label>
+          <label class="field">
+            <span>Command</span>
+            <input type="text" name="opencode_cmd" value="{{ opencode_cmd }}" placeholder="{{ env_opencode }}" spellcheck="false" class="mono">
+          </label>
+          <label class="field">
+            <span>Extra args</span>
+            <input type="text" name="opencode_args" value="{{ opencode_args }}" placeholder="optional flags / model" spellcheck="false" class="mono">
+          </label>
+          <p class="hint">
+            OpenCode ships via npm in the Docker image (<span class="mono">opencode-ai</span>).
+            Sign in from the pane on first use.
+          </p>
+        </fieldset>
+
+        <label class="field">
+          <span>Operator notes</span>
+          <textarea name="install_notes" rows="4" placeholder="Install quirks, model prefs, Tailscale notes…">{{ install_notes }}</textarea>
+        </label>
+
+        <div class="toolbar">
+          <button type="submit" class="primary">Save settings</button>
+        </div>
+      </form>
+
+      <p class="meta-line">Database: <span class="mono">{{ db_path }}</span></p>
+    </section>
+  </div>
+</body>
+</html>
