@@ -180,6 +180,8 @@ pub enum AppError {
     #[allow(dead_code)]
     NotImplemented(String),
     #[error("{0}")]
+    BadRequest(String),
+    #[error("{0}")]
     NotFound(String),
     #[error("{0}")]
     BadGateway(String),
@@ -204,6 +206,7 @@ impl AppError {
     fn code(&self) -> &'static str {
         match self {
             Self::NotImplemented(_) => "NOT_IMPLEMENTED",
+            Self::BadRequest(_) => "BAD_REQUEST",
             Self::NotFound(_) => "NOT_FOUND",
             Self::BadGateway(_) => "BAD_GATEWAY",
             Self::Conflict(_) => "CONFLICT",
@@ -214,6 +217,7 @@ impl AppError {
     fn status(&self) -> StatusCode {
         match self {
             Self::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
+            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::BadGateway(_) => StatusCode::BAD_GATEWAY,
             Self::Conflict(_) => StatusCode::CONFLICT,

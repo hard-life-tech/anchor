@@ -8,6 +8,7 @@ mod db;
 mod error;
 mod git;
 mod github;
+mod project_store;
 mod projects;
 mod settings;
 mod shell;

@@ -1,10 +1,10 @@
-//! SQLite settings store (operator prefs + agent command overrides).
+//! SQLite settings store + project membership tables.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 const MIGRATION_V1: &str = r#"
@@ -12,6 +12,27 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY NOT NULL,
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"#;
+
+const MIGRATION_V2: &str = r#"
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    default_branch TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS project_repos (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    owner TEXT NOT NULL,
+    name TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    clone_url TEXT NOT NULL,
+    private INTEGER NOT NULL DEFAULT 0,
+    default_branch TEXT NOT NULL DEFAULT 'main',
+    sort INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (project_id, owner, name)
 );
 "#;
 
@@ -38,6 +59,7 @@ impl Db {
             .with_context(|| format!("open sqlite {}", path.display()))?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
         conn.execute_batch(MIGRATION_V1)?;
+        conn.execute_batch(MIGRATION_V2)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             path,
@@ -115,6 +137,209 @@ impl Db {
         self.set("install_notes", &s.install_notes)?;
         Ok(())
     }
+
+    pub fn insert_project(&self, project: &ProjectRecord) -> Result<()> {
+        let conn = self.conn.lock().expect("db lock");
+        conn.execute(
+            "INSERT INTO projects (id, slug, name, default_branch, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                project.id,
+                project.slug,
+                project.name,
+                project.default_branch,
+                project.created_at,
+            ],
+        )?;
+        for (i, repo) in project.repos.iter().enumerate() {
+            conn.execute(
+                "INSERT INTO project_repos
+                 (project_id, owner, name, full_name, clone_url, private, default_branch, sort)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    project.id,
+                    repo.owner,
+                    repo.name,
+                    repo.full_name,
+                    repo.clone_url,
+                    if repo.private { 1 } else { 0 },
+                    repo.default_branch,
+                    i as i64,
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn update_project_meta(
+        &self,
+        slug: &str,
+        name: Option<&str>,
+        default_branch: Option<&str>,
+    ) -> Result<bool> {
+        let conn = self.conn.lock().expect("db lock");
+        let existing: Option<(String, Option<String>)> = conn
+            .query_row(
+                "SELECT name, default_branch FROM projects WHERE slug = ?1",
+                params![slug],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let Some((cur_name, cur_branch)) = existing else {
+            return Ok(false);
+        };
+        let new_name = name.unwrap_or(&cur_name);
+        let new_branch = default_branch
+            .map(|s| Some(s.to_string()))
+            .unwrap_or(cur_branch);
+        conn.execute(
+            "UPDATE projects SET name = ?1, default_branch = ?2 WHERE slug = ?3",
+            params![new_name, new_branch, slug],
+        )?;
+        Ok(true)
+    }
+
+    pub fn delete_project(&self, slug: &str) -> Result<bool> {
+        let conn = self.conn.lock().expect("db lock");
+        let n = conn.execute("DELETE FROM projects WHERE slug = ?1", params![slug])?;
+        Ok(n > 0)
+    }
+
+    pub fn get_project_by_slug(&self, slug: &str) -> Result<Option<ProjectRecord>> {
+        let conn = self.conn.lock().expect("db lock");
+        let row: Option<(String, String, String, Option<String>, String)> = conn
+            .query_row(
+                "SELECT id, slug, name, default_branch, created_at FROM projects WHERE slug = ?1",
+                params![slug],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .optional()?;
+        let Some((id, slug, name, default_branch, created_at)) = row else {
+            return Ok(None);
+        };
+        let repos = load_repos(&conn, &id)?;
+        Ok(Some(ProjectRecord {
+            id,
+            slug,
+            name,
+            default_branch,
+            created_at,
+            repos,
+        }))
+    }
+
+    pub fn list_projects(&self) -> Result<Vec<ProjectRecord>> {
+        let conn = self.conn.lock().expect("db lock");
+        let mut stmt = conn.prepare(
+            "SELECT id, slug, name, default_branch, created_at FROM projects ORDER BY slug",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, slug, name, default_branch, created_at) = row?;
+            let repos = load_repos(&conn, &id)?;
+            out.push(ProjectRecord {
+                id,
+                slug,
+                name,
+                default_branch,
+                created_at,
+                repos,
+            });
+        }
+        Ok(out)
+    }
+
+    pub fn add_repo(&self, project_id: &str, repo: &ProjectRepoRecord) -> Result<()> {
+        let conn = self.conn.lock().expect("db lock");
+        let sort: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(sort), -1) + 1 FROM project_repos WHERE project_id = ?1",
+                params![project_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        conn.execute(
+            "INSERT INTO project_repos
+             (project_id, owner, name, full_name, clone_url, private, default_branch, sort)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(project_id, owner, name) DO UPDATE SET
+               full_name = excluded.full_name,
+               clone_url = excluded.clone_url,
+               private = excluded.private,
+               default_branch = excluded.default_branch",
+            params![
+                project_id,
+                repo.owner,
+                repo.name,
+                repo.full_name,
+                repo.clone_url,
+                if repo.private { 1 } else { 0 },
+                repo.default_branch,
+                sort,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_repo(&self, project_id: &str, owner: &str, name: &str) -> Result<bool> {
+        let conn = self.conn.lock().expect("db lock");
+        let n = conn.execute(
+            "DELETE FROM project_repos WHERE project_id = ?1 AND owner = ?2 AND name = ?3",
+            params![project_id, owner, name],
+        )?;
+        Ok(n > 0)
+    }
+}
+
+fn load_repos(conn: &Connection, project_id: &str) -> Result<Vec<ProjectRepoRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT owner, name, full_name, clone_url, private, default_branch
+         FROM project_repos WHERE project_id = ?1 ORDER BY sort, full_name",
+    )?;
+    let rows = stmt.query_map(params![project_id], |row| {
+        Ok(ProjectRepoRecord {
+            owner: row.get(0)?,
+            name: row.get(1)?,
+            full_name: row.get(2)?,
+            clone_url: row.get(3)?,
+            private: row.get::<_, i64>(4)? != 0,
+            default_branch: row.get(5)?,
+        })
+    })?;
+    let mut repos = Vec::new();
+    for row in rows {
+        repos.push(row?);
+    }
+    Ok(repos)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProjectRepoRecord {
+    pub owner: String,
+    pub name: String,
+    pub full_name: String,
+    pub clone_url: String,
+    pub private: bool,
+    pub default_branch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProjectRecord {
+    pub id: String,
+    pub slug: String,
+    pub name: String,
+    pub default_branch: Option<String>,
+    pub created_at: String,
+    pub repos: Vec<ProjectRepoRecord>,
 }
 
 /// Persisted operator settings. Empty command strings mean “use env default”.
@@ -202,5 +427,58 @@ mod tests {
             "cursor-agent --model gpt"
         );
         assert_eq!(loaded.resolve_cmd("opencode", "opencode"), "bash");
+    }
+
+    #[test]
+    fn projects_crud() {
+        let tmp = TempDir::new().unwrap();
+        let db = Db::open(tmp.path().join("anchor.db")).unwrap();
+        let project = ProjectRecord {
+            id: "p1".into(),
+            slug: "platform".into(),
+            name: "Platform".into(),
+            default_branch: Some("main".into()),
+            created_at: "2026-08-02T00:00:00Z".into(),
+            repos: vec![ProjectRepoRecord {
+                owner: "alice".into(),
+                name: "anchor".into(),
+                full_name: "alice/anchor".into(),
+                clone_url: "https://github.com/alice/anchor.git".into(),
+                private: true,
+                default_branch: "main".into(),
+            }],
+        };
+        db.insert_project(&project).unwrap();
+        let loaded = db.get_project_by_slug("platform").unwrap().unwrap();
+        assert_eq!(loaded.name, "Platform");
+        assert_eq!(loaded.repos.len(), 1);
+        assert_eq!(loaded.repos[0].full_name, "alice/anchor");
+
+        db.add_repo(
+            "p1",
+            &ProjectRepoRecord {
+                owner: "alice".into(),
+                name: "docs".into(),
+                full_name: "alice/docs".into(),
+                clone_url: "https://github.com/alice/docs.git".into(),
+                private: false,
+                default_branch: "main".into(),
+            },
+        )
+        .unwrap();
+        let loaded = db.get_project_by_slug("platform").unwrap().unwrap();
+        assert_eq!(loaded.repos.len(), 2);
+
+        assert!(db.remove_repo("p1", "alice", "docs").unwrap());
+        let loaded = db.get_project_by_slug("platform").unwrap().unwrap();
+        assert_eq!(loaded.repos.len(), 1);
+
+        assert!(db.update_project_meta("platform", Some("Plat"), None).unwrap());
+        assert_eq!(
+            db.get_project_by_slug("platform").unwrap().unwrap().name,
+            "Plat"
+        );
+        assert!(db.delete_project("platform").unwrap());
+        assert!(db.get_project_by_slug("platform").unwrap().is_none());
     }
 }
