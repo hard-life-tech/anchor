@@ -36,8 +36,6 @@ async fn style_css() -> impl IntoResponse {
 struct DashboardTemplate {
     healthy: bool,
     projects_dir: String,
-    projects: Vec<ProjectStatus>,
-    repos: Vec<RepoRow>,
     github_user: String,
     github_host: String,
 }
@@ -65,14 +63,11 @@ struct RepoRow {
     on_disk: bool,
 }
 
+/// Shell + skeletons only — no GitHub / disk inventory. Fragments load via htmx.
 async fn dashboard(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
-    let projects = projects::list_statuses(&state).await.unwrap_or_default();
-    let repos = load_repo_rows(&state).await.unwrap_or_default();
     Ok(DashboardTemplate {
         healthy: true,
         projects_dir: state.config.projects_dir.display().to_string(),
-        projects,
-        repos,
         github_user: state.config.github_user.clone(),
         github_host: state.config.github_host.clone(),
     })
@@ -150,6 +145,9 @@ async fn run_sync(state: &AppState, repo: &str) -> Result<String, AppError> {
         }
     };
 
+    // Disk inventory changed — next repo list should re-check on_disk badges.
+    state.github.invalidate_cache().await;
+
     let actions: Vec<_> = worktrees
         .iter()
         .map(|w| (w.agent.clone(), w.action))
@@ -210,6 +208,24 @@ mod tests {
     use super::*;
     use crate::sync_memory::{LastSync, SyncOutcome};
     use chrono::Utc;
+
+    #[test]
+    fn dashboard_shell_defers_lists() {
+        let html = DashboardTemplate {
+            healthy: true,
+            projects_dir: "/home/agent/projects".into(),
+            github_user: "alice".into(),
+            github_host: "github.com".into(),
+        }
+        .render()
+        .unwrap();
+        assert!(html.contains("hx-get=\"/partials/projects\""));
+        assert!(html.contains("hx-get=\"/partials/repos\""));
+        assert!(html.contains("hx-trigger=\"load\""));
+        assert!(html.contains("skeleton-block"));
+        assert!(!html.contains("repo-list"));
+        assert!(!html.contains("No projects yet"));
+    }
 
     #[test]
     fn projects_partial_renders_empty() {

@@ -96,6 +96,8 @@ async fn sync_project(
         }
     };
 
+    state.github.invalidate_cache().await;
+
     let actions: Vec<_> = worktrees
         .iter()
         .map(|w| (w.agent.clone(), w.action))

@@ -45,8 +45,32 @@
           hx-swap="innerHTML swap:150ms"
         >Refresh projects</button>
       </div>
-      <div id="projects" class="fade">
-        {% include "partials/projects.html" %}
+      <div
+        id="projects"
+        class="fade"
+        hx-get="/partials/projects"
+        hx-trigger="load"
+        hx-swap="innerHTML swap:150ms"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <div class="skeleton-block" aria-hidden="true">
+          <div class="skeleton-row">
+            <div class="skeleton-line w-40"></div>
+            <div class="skeleton-line w-24"></div>
+            <div class="skeleton-line w-16"></div>
+          </div>
+          <div class="skeleton-row">
+            <div class="skeleton-line w-36"></div>
+            <div class="skeleton-line w-28"></div>
+            <div class="skeleton-line w-16"></div>
+          </div>
+          <div class="skeleton-row">
+            <div class="skeleton-line w-44"></div>
+            <div class="skeleton-line w-20"></div>
+            <div class="skeleton-line w-16"></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -61,8 +85,45 @@
           hx-swap="innerHTML swap:150ms"
         >Refresh repos</button>
       </div>
-      <div id="repos" class="fade">
-        {% include "partials/repos.html" %}
+      <div
+        id="repos"
+        class="fade"
+        hx-get="/partials/repos"
+        hx-trigger="load"
+        hx-swap="innerHTML swap:150ms"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <div class="skeleton-block" aria-hidden="true">
+          <div class="skeleton-row repo">
+            <div class="skeleton-stack">
+              <div class="skeleton-line w-48"></div>
+              <div class="skeleton-line w-24"></div>
+            </div>
+            <div class="skeleton-btn"></div>
+          </div>
+          <div class="skeleton-row repo">
+            <div class="skeleton-stack">
+              <div class="skeleton-line w-40"></div>
+              <div class="skeleton-line w-20"></div>
+            </div>
+            <div class="skeleton-btn"></div>
+          </div>
+          <div class="skeleton-row repo">
+            <div class="skeleton-stack">
+              <div class="skeleton-line w-52"></div>
+              <div class="skeleton-line w-28"></div>
+            </div>
+            <div class="skeleton-btn"></div>
+          </div>
+          <div class="skeleton-row repo">
+            <div class="skeleton-stack">
+              <div class="skeleton-line w-36"></div>
+              <div class="skeleton-line w-24"></div>
+            </div>
+            <div class="skeleton-btn"></div>
+          </div>
+        </div>
       </div>
     </section>
   </div>
