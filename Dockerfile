@@ -32,16 +32,27 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Agent CLIs. These installers change over time on both sides — verify the
-# current commands in each project's docs before relying on this in prod.
+# OpenCode (global npm) — lands on default PATH for all users.
 RUN npm install -g opencode-ai
-RUN curl -fsSL https://cursor.com/install | bash
+
+# Cursor CLI installer writes to $HOME/.local. The runtime volume mounts over
+# /home/agent, so keep the binary tree under /usr/local (outside the volume).
+RUN curl -fsSL https://cursor.com/install | bash \
+    && mkdir -p /usr/local/share \
+    && cp -a /root/.local/share/cursor-agent /usr/local/share/cursor-agent \
+    && LATEST="$(ls -1 /usr/local/share/cursor-agent/versions | sort | tail -1)" \
+    && ln -sfn "/usr/local/share/cursor-agent/versions/${LATEST}/cursor-agent" /usr/local/bin/agent \
+    && ln -sfn /usr/local/bin/agent /usr/local/bin/cursor-agent \
+    && agent --version \
+    && cursor-agent --version
 
 RUN groupadd -g ${AGENT_GID} agent \
     && useradd -m -u ${AGENT_UID} -g ${AGENT_GID} -s /bin/bash agent
 
 ENV HOME=/home/agent
-ENV PATH="/home/agent/.local/bin:/home/agent/.cursor/bin:${PATH}"
+# /usr/local/bin already has agent + cursor-agent; keep ~/.local/bin for
+# operator-installed tools that persist on the agent-home volume.
+ENV PATH="/usr/local/bin:/home/agent/.local/bin:/home/agent/.cursor/bin:${PATH}"
 
 COPY --from=builder /app/target/release/anchor /usr/local/bin/anchor
 
