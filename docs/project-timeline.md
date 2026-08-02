@@ -36,20 +36,20 @@ Status as of 2026-08-02. v1 scope is defined in [`PROJECT.md`](../PROJECT.md).
 - [x] Fresh sync creates `.bare` + both worktrees + tmux window (unit-covered; Compose e2e pending)
 - [x] Re-sync is idempotent (no duplicate windows, no force overwrite) (unit-covered)
 - [x] Dirty/diverged worktrees reported, left untouched (dirty covered; diverged path present)
-- [ ] `/api/projects` accurate after container restart (tmux gone, disk intact) — Compose verify pending
-- [x] Healthz works in container image (Compose with live PAT still operator-side)
+- [x] `/api/projects` lists on-disk projects without tmux (restart-safe inventory unit-tested); Compose restart e2e still needs live PAT — [#1](https://github.com/hard-life-tech/anchor/issues/1)
+- [x] Healthz works in container image (Compose with live PAT still operator-side — [#2](https://github.com/hard-life-tech/anchor/issues/2))
 
 ### Phase 3 — Hardening
-- [ ] Assert `GITHUB_TOKEN` never present in agent pane environments
-- [ ] Deny-path tests for logging (no token in traces)
-- [ ] Document Tailscale / Coolify production checklist
-- [ ] Optional: drop Compose host port publish in prod examples
+- [x] Assert `GITHUB_TOKEN` never present in agent pane / session env (scrub + unit tests; Compose confirm — [#3](https://github.com/hard-life-tech/anchor/issues/3))
+- [x] Deny-path tests for API errors (PAT shapes redacted); tracing audit still open — [#4](https://github.com/hard-life-tech/anchor/issues/4)
+- [ ] Document Tailscale / Coolify production checklist — [#5](https://github.com/hard-life-tech/anchor/issues/5)
+- [ ] Optional: drop Compose host port publish in prod examples — [#6](https://github.com/hard-life-tech/anchor/issues/6)
 
 ### Phase 4 — OSS launch
 - [x] `gh` auth available for Hard Life Tech
 - [x] Remote + README
 - [x] CONTRIBUTING + basic issue templates
-- [ ] GitHub Projects (or Enterprise Projects) board for Core roadmap — see [project-management.md](conceptual/workflow/project-management.md)
+- [x] GitHub Projects board for Core roadmap — [project-management.md](conceptual/workflow/project-management.md) / https://github.com/orgs/hard-life-tech/projects/4
 
 ### Phase 5 — Management SaaS (private)
 - [ ] Separate private repo / distribution channel

@@ -54,6 +54,7 @@ cp .env.example .env
 
 docker compose up --build -d
 curl -sS http://127.0.0.1:8080/healthz
+# Compose healthcheck also probes /healthz inside the container
 ```
 
 Volumes (from `docker-compose.yml`):

@@ -49,6 +49,7 @@ v1 ships **only Core** for a single operator on a private network (Tailscale). S
 - [Sync + tmux flow](conceptual/architecture/diagrams/flows/sync-and-tmux.md)
 - [Sync sequence](conceptual/architecture/diagrams/sequences/sync-project.md)
 - [Token / agent env isolation](conceptual/architecture/diagrams/flows/secret-isolation.md)
+- [GitHub Projects board](conceptual/workflow/project-management.md) — https://github.com/orgs/hard-life-tech/projects/4
 - [Implementation plan (scaffold)](superpowers/plans/2026-08-02-anchor-core-scaffold.md)
 
 ## Agent safety

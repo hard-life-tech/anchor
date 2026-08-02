@@ -1,21 +1,23 @@
 # Project management (GitHub Projects)
 
-Anchor Core will be managed as an open-source project under **Hard Life Tech**.
+Anchor Core is managed under **Hard Life Tech**.
 
-## Recommended setup (when org exists)
+## Board
 
-1. Public repo `hard-life-tech/anchor` (name TBD with branding).
-2. GitHub **Projects** (or Enterprise Projects if the org is on GHE) board with columns aligned to [project-timeline.md](../../project-timeline.md):
-   - Backlog → Ready → In progress → Review → Done
-3. Map Phase 1–3 checklist items to issues; label `mvp`, `security`, `docs`, `saas-private`.
-4. Keep **SaaS / Management** work in a **private** project/repo so OSS contributors do not see closed-source roadmaps.
+**Anchor Core** (public): https://github.com/orgs/hard-life-tech/projects/4
+
+Linked repo: [hard-life-tech/anchor](https://github.com/hard-life-tech/anchor).
+
+Status columns: **Backlog → Ready → In Progress → Review → Done** (aligned with [project-timeline.md](../../project-timeline.md)).
 
 ## Conventions
 
-- One issue ≈ one shippable slice (see timeline backlog IDs T01…).
-- ADRs linked from issues that change architecture.
-- Do not put secrets or customer cloud details in public project notes.
+1. Map Phase 1–3 checklist items to issues; labels `mvp`, `security`, `docs`, `compose`.
+2. One issue ≈ one shippable slice (timeline backlog IDs T01…).
+3. ADRs linked from issues that change architecture.
+4. Do not put secrets or customer cloud details in public project notes.
+5. Keep **SaaS / Management** work in a **private** project/repo so OSS contributors do not see closed-source roadmaps.
 
 ## Status
 
-**Blocked:** GitHub org/repo not created yet. Track under Phase 4 in the timeline.
+Board created 2026-08-02. Open MVP/Compose/security items tracked as issues #1–#6.

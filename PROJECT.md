@@ -124,6 +124,6 @@ GitHub App, webhooks, dashboard auth, built-in web terminal, multi-user Core, Ma
 - [ ] Fresh `POST /api/projects/{repo}/sync` creates `.bare` + both worktrees + tmux window with panes.
 - [ ] Re-sync is idempotent (no duplicate windows/worktrees, no force overwrite).
 - [ ] Dirty or diverged worktrees are reported and left untouched.
-- [ ] `GET /api/projects` is accurate after container restart (tmux gone, disk intact).
+- [x] `GET /api/projects` is accurate after container restart (tmux gone, disk intact) — inventory from disk; Compose e2e with live PAT still open.
 - [ ] `GET /healthz` returns `OK`; Compose brings up with only `GITHUB_TOKEN` + `GITHUB_USER`.
-- [ ] Token never appears in API responses, logs, or agent pane environments.
+- [x] Token never appears in API responses, logs, or agent pane environments — scrub + redaction unit-tested; live pane e2e open.
