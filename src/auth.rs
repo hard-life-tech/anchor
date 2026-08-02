@@ -1,6 +1,5 @@
 //! Session cookie auth. All routes except `/healthz`, `/login`, and static assets.
 
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use askama::Template;
@@ -251,6 +250,7 @@ fn ct_eq_str(a: &str, b: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     fn test_auth() -> AuthConfig {
         AuthConfig {

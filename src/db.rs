@@ -413,10 +413,12 @@ mod tests {
     fn settings_roundtrip() {
         let tmp = TempDir::new().unwrap();
         let db = Db::open(tmp.path().join("anchor.db")).unwrap();
-        let mut s = AgentSettings::default();
-        s.cursor_cmd = Some("cursor-agent".into());
-        s.cursor_args = "--model gpt".into();
-        s.opencode_enabled = false;
+        let s = AgentSettings {
+            cursor_cmd: Some("cursor-agent".into()),
+            cursor_args: "--model gpt".into(),
+            opencode_enabled: false,
+            ..AgentSettings::default()
+        };
         db.save_agent_settings(&s).unwrap();
         let loaded = db.load_agent_settings().unwrap();
         assert_eq!(loaded.cursor_cmd.as_deref(), Some("cursor-agent"));

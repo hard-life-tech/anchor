@@ -185,8 +185,6 @@ fn parse_sqlite_url(raw: &str) -> Result<PathBuf, ConfigError> {
         // sqlite:///home/... → /home/... after stripping one leading slash pair carefully
         if trimmed.starts_with("sqlite:///") {
             format!("/{}", rest.trim_start_matches('/'))
-        } else if rest.starts_with('/') {
-            rest.to_string()
         } else {
             rest.to_string()
         }

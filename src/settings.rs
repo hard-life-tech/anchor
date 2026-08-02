@@ -69,7 +69,7 @@ async fn settings_page(
     Query(q): Query<SettingsQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     let saved = q.saved.as_deref() == Some("1");
-    Ok(render_page(&state, saved, None)?)
+    render_page(&state, saved, None)
 }
 
 async fn settings_save(
@@ -86,7 +86,7 @@ async fn settings_save(
         last_opened_project: state
             .db
             .load_agent_settings()
-            .map_err(|e| AppError::Other(e))?
+            .map_err(AppError::Other)?
             .last_opened_project,
         install_notes: form.install_notes,
     };
@@ -100,7 +100,7 @@ async fn api_get(State(state): State<AppState>) -> Result<impl IntoResponse, App
     let s = state
         .db
         .load_agent_settings()
-        .map_err(|e| AppError::Other(e))?;
+        .map_err(AppError::Other)?;
     Ok(Json(public_settings(&state, &s)))
 }
 
@@ -111,7 +111,7 @@ async fn api_post(
     let mut s = state
         .db
         .load_agent_settings()
-        .map_err(|e| AppError::Other(e))?;
+        .map_err(AppError::Other)?;
     if let Some(v) = body.cursor_cmd {
         s.cursor_cmd = nonempty(v);
     }
@@ -139,7 +139,7 @@ async fn api_post(
     state
         .db
         .save_agent_settings(&s)
-        .map_err(|e| AppError::Other(e))?;
+        .map_err(AppError::Other)?;
     Ok(Json(public_settings(&state, &s)))
 }
 
@@ -173,7 +173,7 @@ fn render_page(
     let s = state
         .db
         .load_agent_settings()
-        .map_err(|e| AppError::Other(e))?;
+        .map_err(AppError::Other)?;
     Ok(SettingsTemplate {
         cursor_cmd: s.cursor_cmd.unwrap_or_default(),
         opencode_cmd: s.opencode_cmd.unwrap_or_default(),
