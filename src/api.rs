@@ -133,6 +133,7 @@ async fn create_project(
     project_store::save_project(&state.db, &state.config.projects_dir, &record)
         .await
         .map_err(AppError::Other)?;
+    state.status_cache.invalidate().await;
 
     let status = projects::build_status(&state, &slug).await?;
     Ok((StatusCode::CREATED, Json(status)))
@@ -178,6 +179,7 @@ async fn patch_project(
         .await
         .map_err(AppError::Other)?;
     }
+    state.status_cache.invalidate().await;
     Ok(Json(projects::build_status(&state, &slug).await?))
 }
 
@@ -190,6 +192,7 @@ async fn delete_project(
         return Err(AppError::NotFound(format!("unknown project: {slug}")));
     }
     let _ = project_store::delete_project_json(&state.config.projects_dir.join(&slug)).await;
+    state.status_cache.invalidate().await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -237,6 +240,7 @@ async fn add_repos(
     .await
     .map_err(AppError::Other)?;
 
+    state.status_cache.invalidate().await;
     Ok(Json(projects::build_status(&state, &slug).await?))
 }
 
@@ -285,6 +289,7 @@ async fn remove_repo(
     .await
     .map_err(AppError::Other)?;
 
+    state.status_cache.invalidate().await;
     Ok(Json(projects::build_status(&state, &slug).await?))
 }
 
@@ -516,7 +521,8 @@ pub async fn sync_all_members(
     }
 
     state.sync_memory.record_ok(slug, &all_actions).await;
-    state.github.invalidate_cache().await;
+    // Repo visibility list is unchanged by sync — keep the 180s GitHub cache.
+    state.status_cache.invalidate().await;
 
     let tmux = ensure_tmux(state, slug, &record.repos).await?;
     Ok(SyncResponse {

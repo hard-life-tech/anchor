@@ -12,6 +12,7 @@ mod project_store;
 mod projects;
 mod settings;
 mod shell;
+mod status_cache;
 mod sync_memory;
 mod terminal;
 mod tmux;
@@ -25,6 +26,7 @@ use crate::auth::AuthConfig;
 use crate::config::Config;
 use crate::db::Db;
 use crate::github::GitHubClient;
+use crate::status_cache::StatusCache;
 use crate::sync_memory::SyncMemory;
 
 #[derive(Clone)]
@@ -32,6 +34,7 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub github: Arc<GitHubClient>,
     pub sync_memory: SyncMemory,
+    pub status_cache: StatusCache,
     pub db: Db,
     pub auth: Arc<AuthConfig>,
 }
@@ -91,15 +94,25 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let auth = Arc::new(AuthConfig::from_config(&config));
-    let github = GitHubClient::new(
+    let github = Arc::new(GitHubClient::new(
         config.github_token.clone(),
         config.github_user.clone(),
         config.github_api_url.clone(),
-    );
+    ));
+    // Warm /user/repos cache so dashboard repos partial rarely cold-misses.
+    {
+        let gh = Arc::clone(&github);
+        tokio::spawn(async move {
+            if let Err(e) = gh.list_repos().await {
+                tracing::warn!(error = %e, "background GitHub repo cache warm failed");
+            }
+        });
+    }
     let state = AppState {
         config: Arc::new(config),
-        github: Arc::new(github),
+        github,
         sync_memory: SyncMemory::new(),
+        status_cache: StatusCache::new(),
         db,
         auth,
     };

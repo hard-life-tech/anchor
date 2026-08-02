@@ -140,12 +140,26 @@ pub async fn session_exists(session: &str) -> Result<bool> {
     Ok(out.success())
 }
 
-pub async fn window_exists(session: &str, window: &str) -> Result<bool> {
+/// All window names in a session (one shell-out). Empty when session missing.
+pub async fn list_window_names(session: &str) -> Result<Vec<String>> {
+    if !session_exists(session).await? {
+        return Ok(Vec::new());
+    }
     let out = shell::run_tmux(&["list-windows", "-t", session, "-F", "#{window_name}"]).await?;
     if !out.success() {
-        return Ok(false);
+        return Ok(Vec::new());
     }
-    Ok(out.stdout.lines().any(|l| l.trim() == window))
+    Ok(out
+        .stdout
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect())
+}
+
+pub async fn window_exists(session: &str, window: &str) -> Result<bool> {
+    let names = list_window_names(session).await?;
+    Ok(names.iter().any(|n| n == window))
 }
 
 /// Select a pane and zoom it so a single-client attach shows one agent TUI.

@@ -490,6 +490,31 @@ pub async fn list_on_disk_slugs(projects_dir: &Path) -> Result<Vec<String>> {
     Ok(names)
 }
 
+/// Filesystem-only presence (no git spawn). Safe for list inventory.
+pub fn member_worktree_presence(
+    projects_dir: &Path,
+    slug: &str,
+    owner: &str,
+    name: &str,
+) -> Vec<WorktreeStatus> {
+    let mut out = Vec::new();
+    for (agent, branch) in AGENTS {
+        let wt = worktree_dir(projects_dir, slug, agent, owner, name);
+        if wt.exists() {
+            out.push(WorktreeStatus {
+                agent: (*agent).into(),
+                branch: (*branch).into(),
+                ahead: 0,
+                behind: 0,
+                dirty: false,
+                diverged: false,
+            });
+        }
+    }
+    out
+}
+
+/// Deep status: dirty / ahead / behind via git (detail pages + on-demand).
 pub async fn member_worktree_statuses(
     projects_dir: &Path,
     slug: &str,
