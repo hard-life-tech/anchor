@@ -1,0 +1,14 @@
+---
+description: Rust and Docker conventions for Anchor Core
+globs: ["**/*.rs", "Cargo.toml", "Dockerfile", "docker-compose.yml"]
+alwaysApply: false
+---
+
+# Anchor Core implementation
+
+- Binary/package name must remain `anchor` (Dockerfile copies `target/release/anchor`).
+- Shell out to `git` and `tmux` via `tokio::process::Command` — do not add `git2` for worktrees in v1.
+- Sync must be idempotent; never force-overwrite dirty/diverged worktrees.
+- Re-sync must never kill live tmux panes.
+- No database in v1 — filesystem + git + tmux are sources of truth.
+- When spawning agent panes, strip `GITHUB_TOKEN` from the pane environment.

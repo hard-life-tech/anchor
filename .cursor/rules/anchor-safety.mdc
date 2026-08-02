@@ -1,0 +1,16 @@
+---
+description: Anchor agent safety and product boundaries
+globs:
+alwaysApply: true
+---
+
+# Anchor — Cursor rules
+
+- Product is **Anchor** (see `PROJECT.md`). Hard Life Tech: Core OSS, Management SaaS private.
+- Keep `AGENTS.md` authoritative for cross-tool agent notes; do not bloat it.
+- Never read or commit `.env` / secrets. Never print `GITHUB_TOKEN`.
+- Never export `GITHUB_TOKEN` into tmux panes — Anchor process environment only.
+- Deny destructive shell: `rm -rf`, `sudo`, `dd`, `mkfs`.
+- Safe git reads are fine; do not force-push; do not push/commit unless the user asks.
+- Do not implement private SaaS features inside this OSS tree.
+- Prefer updating docs when changing behavior described in `PROJECT.md` or `docs/`.

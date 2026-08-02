@@ -1,0 +1,40 @@
+{
+  "terminalAllowlist": [
+    "git status",
+    "git diff*",
+    "git log*",
+    "git show*",
+    "git branch*",
+    "git rev-parse*",
+    "rg *",
+    "ls *",
+    "pwd",
+    "cargo check*",
+    "cargo test*",
+    "cargo build*",
+    "cargo clippy*"
+  ],
+  "terminalDenylist": [
+    "rm -rf *",
+    "sudo *",
+    "dd *",
+    "mkfs*",
+    "shutdown*",
+    "reboot*",
+    "chmod 777 *",
+    "printenv GITHUB_TOKEN",
+    "echo $GITHUB_TOKEN"
+  ],
+  "readDenylist": [
+    "**/.env",
+    "**/.env.*",
+    "**/*.pem",
+    "**/.bare/**"
+  ],
+  "defaults": {
+    "terminal": "ask",
+    "network": "ask",
+    "gitWrite": "ask"
+  },
+  "notes": "Mirror AGENTS.md: never export GITHUB_TOKEN into agent tmux panes; Anchor process env only."
+}

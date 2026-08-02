@@ -1,0 +1,7 @@
+# Environment / VCS noise for Cursor indexing
+.env
+.env.*
+.bare/
+**/.bare/
+target/
+*.pem

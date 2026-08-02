@@ -1,0 +1,53 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "permission": {
+    "bash": "ask",
+    "edit": "allow",
+    "read": "allow",
+    "write": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "external_directory": "ask",
+    "doom_loop": "ask",
+    "question": "allow",
+    "skill": "allow",
+    "task": "ask",
+    "webfetch": "ask",
+    "websearch": "ask",
+    "codesearch": "allow",
+    "lsp": "allow",
+    "today": "allow",
+    "tools": {
+      "bash": {
+        "git status": "allow",
+        "git diff": "allow",
+        "git log": "allow",
+        "git show": "allow",
+        "git branch": "allow",
+        "git rev-parse": "allow",
+        "rg *": "allow",
+        "ls *": "allow",
+        "pwd": "allow",
+        "cargo check": "allow",
+        "cargo test": "allow",
+        "cargo build": "allow",
+        "rm -rf *": "deny",
+        "sudo *": "deny",
+        "dd *": "deny",
+        "mkfs*": "deny",
+        "chmod 777 *": "deny",
+        "curl *GITHUB_TOKEN*": "deny",
+        "printenv GITHUB_TOKEN": "deny",
+        "env | *GITHUB_TOKEN*": "deny"
+      },
+      "read": {
+        "*.env": "deny",
+        "*.env.*": "deny",
+        "**/.env": "deny",
+        "**/.env.*": "deny",
+        "**/.bare/**": "deny"
+      }
+    }
+  }
+}
