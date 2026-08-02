@@ -1,11 +1,11 @@
-{% if repos.is_empty() %}
+{% if repos.is_empty() && offset == 0 %}
   <p class="empty">
     No repos returned for <span class="mono">{{ github_user }}</span> on
     <span class="mono">{{ github_host }}</span>.
     Check <span class="mono">GITHUB_TOKEN</span> scope and enterprise host settings.
   </p>
-{% else %}
-  <ul class="repo-list">
+{% else if offset == 0 %}
+  <ul class="repo-list" id="repo-list">
     {% for r in repos %}
     <li>
       <div>
@@ -45,4 +45,67 @@
     </li>
     {% endfor %}
   </ul>
+  <div id="repos-more" class="toolbar" style="margin-top:0.75rem">
+    {% if has_more %}
+    <button
+      type="button"
+      hx-get="/partials/repos?offset={{ next_offset }}"
+      hx-target="#repo-list"
+      hx-swap="beforeend"
+      hx-select="li"
+      hx-indicator="this"
+    >Show more</button>
+    {% endif %}
+  </div>
+{% else %}
+  {% for r in repos %}
+  <li>
+    <div>
+      <div class="repo-title">
+        <span class="mono">{{ r.full_name }}</span>
+        <span class="badge {% if r.private %}private{% else %}public{% endif %}">
+          {% if r.private %}private{% else %}public{% endif %}
+        </span>
+        {% for slug in r.in_projects %}
+          <a class="badge on-disk" href="/projects/{{ slug }}">{{ slug }}</a>
+        {% endfor %}
+      </div>
+      <div class="repo-meta">
+        {{ r.default_branch }} · {{ github_host }}
+      </div>
+    </div>
+    <div class="repo-actions">
+      {% if !projects.is_empty() %}
+      <form
+        class="inline-form add-to-project"
+        hx-post="/partials/projects/{{ projects[0].slug }}/repos"
+        hx-target="#repos"
+        hx-swap="innerHTML swap:150ms"
+      >
+        <input type="hidden" name="full_name" value="{{ r.full_name }}">
+        <select name="project_slug" aria-label="Project">
+          {% for p in projects %}
+            <option value="{{ p.slug }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Add to project</button>
+      </form>
+      {% else %}
+        <span class="chip meta">create a project first</span>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+  <div id="repos-more" class="toolbar" style="margin-top:0.75rem" hx-swap-oob="true">
+    {% if has_more %}
+    <button
+      type="button"
+      hx-get="/partials/repos?offset={{ next_offset }}"
+      hx-target="#repo-list"
+      hx-swap="beforeend"
+      hx-select="li"
+      hx-indicator="this"
+    >Show more</button>
+    {% endif %}
+  </div>
 {% endif %}

@@ -324,6 +324,11 @@ button.htmx-request {
   gap: 0;
 }
 
+.skeleton-hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+}
+
 .skeleton-row {
   display: grid;
   grid-template-columns: 1fr 1fr auto;

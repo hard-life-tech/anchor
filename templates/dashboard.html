@@ -114,6 +114,7 @@
             <div class="skeleton-line w-16"></div>
           </div>
         </div>
+        <p class="meta skeleton-hint">Loading projects…</p>
       </div>
     </section>
 
@@ -132,7 +133,7 @@
         id="repos"
         class="fade"
         hx-get="/partials/repos"
-        hx-trigger="load"
+        hx-trigger="load delay:50ms"
         hx-swap="innerHTML swap:150ms"
         aria-busy="true"
         aria-live="polite"
@@ -146,6 +147,7 @@
             <div class="skeleton-btn"></div>
           </div>
         </div>
+        <p class="meta skeleton-hint">Loading repos…</p>
       </div>
     </section>
   </div>

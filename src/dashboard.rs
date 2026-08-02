@@ -2,12 +2,13 @@
 
 use askama::Template;
 use askama_web::WebTemplate;
-use axum::extract::{Path, RawForm, State};
+use axum::extract::{Path, Query, RawForm, State};
 use axum::http::header;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use chrono::Utc;
+use serde::Deserialize;
 
 use crate::api;
 use crate::db::ProjectRecord;
@@ -16,6 +17,9 @@ use crate::github::Repo;
 use crate::project_store::{self, validate_slug};
 use crate::projects::{self, ProjectStatus};
 use crate::AppState;
+
+/// First paint of the repos list — remaining rows load via "Show more".
+const REPOS_PAGE_SIZE: usize = 40;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -76,6 +80,9 @@ struct ReposPartial {
     projects: Vec<ProjectOption>,
     github_user: String,
     github_host: String,
+    offset: usize,
+    has_more: bool,
+    next_offset: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -92,18 +99,28 @@ struct RepoRow {
     in_projects: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ReposQuery {
+    #[serde(default)]
+    offset: usize,
+}
+
 async fn dashboard(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
-    let create_repos = match state.github.list_repos().await {
-        Ok(list) => list
-            .repos
-            .into_iter()
-            .map(|r| CreateRepoOption {
-                full_name: r.full_name,
-                private: r.private,
-            })
-            .collect(),
-        Err(_) => Vec::new(),
-    };
+    // Never block first paint on GitHub — use warm cache only; empty until warm.
+    let create_repos = state
+        .github
+        .cached_repos()
+        .await
+        .map(|list| {
+            list.repos
+                .into_iter()
+                .map(|r| CreateRepoOption {
+                    full_name: r.full_name,
+                    private: r.private,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(DashboardTemplate {
         healthy: true,
         projects_dir: state.config.projects_dir.display().to_string(),
@@ -130,8 +147,11 @@ async fn partial_projects(State(state): State<AppState>) -> Result<impl IntoResp
     Ok(ProjectsPartial { projects })
 }
 
-async fn partial_repos(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
-    let repos = load_repo_rows(&state)
+async fn partial_repos(
+    State(state): State<AppState>,
+    Query(q): Query<ReposQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    let (repos, has_more) = load_repo_rows_page(&state, q.offset, REPOS_PAGE_SIZE)
         .await
         .map_err(|e| AppError::BadGateway(e.to_string()))?;
     let project_opts = state
@@ -144,11 +164,15 @@ async fn partial_repos(State(state): State<AppState>) -> Result<impl IntoRespons
             name: p.name,
         })
         .collect();
+    let next_offset = q.offset.saturating_add(repos.len());
     Ok(ReposPartial {
         repos,
         projects: project_opts,
         github_user: state.config.github_user.clone(),
         github_host: state.config.github_host.clone(),
+        offset: q.offset,
+        has_more,
+        next_offset,
     })
 }
 
@@ -249,10 +273,12 @@ async fn partial_create_project(
     {
         return Ok(flash_and_projects(&state, true, &e.to_string()).await);
     }
+    state.status_cache.invalidate().await;
 
     // Auto-sync after create when members present.
     if !record.repos.is_empty() {
         let _ = api::sync_all_members(&state, &record).await;
+        state.status_cache.invalidate().await;
     }
 
     Ok(flash_and_projects(
@@ -324,9 +350,10 @@ async fn partial_add_repo(
     )
     .await
     .map_err(AppError::Other)?;
+    state.status_cache.invalidate().await;
 
-    // Refresh repos partial.
-    let repos = load_repo_rows(&state)
+    // Refresh repos partial (first page).
+    let (repos, has_more) = load_repo_rows_page(&state, 0, REPOS_PAGE_SIZE)
         .await
         .map_err(|e| AppError::BadGateway(e.to_string()))?;
     let project_opts = state
@@ -339,11 +366,15 @@ async fn partial_add_repo(
             name: p.name,
         })
         .collect();
+    let next_offset = repos.len();
     let repos_html = ReposPartial {
         repos,
         projects: project_opts,
         github_user: state.config.github_user.clone(),
         github_host: state.config.github_host.clone(),
+        offset: 0,
+        has_more,
+        next_offset,
     }
     .render()
     .map_err(|e| AppError::Other(e.into()))?;
@@ -361,6 +392,7 @@ async fn partial_sync(
     Path(slug): Path<String>,
 ) -> Result<Response, AppError> {
     let sync_result = run_sync(&state, &slug).await;
+    state.status_cache.invalidate().await;
     let projects = projects::list_statuses(&state).await.unwrap_or_default();
     let projects_html = ProjectsPartial { projects }
         .render()
@@ -450,13 +482,20 @@ async fn sync_via_api_ensure(state: &AppState, slug: &str) -> Result<String, App
         .unwrap_or_else(|| "ok".into()))
 }
 
-async fn load_repo_rows(state: &AppState) -> anyhow::Result<Vec<RepoRow>> {
+async fn load_repo_rows_page(
+    state: &AppState,
+    offset: usize,
+    limit: usize,
+) -> anyhow::Result<(Vec<RepoRow>, bool)> {
     let list = state.github.list_repos().await?;
     let projects = state.db.list_projects().unwrap_or_default();
-    Ok(list
-        .repos
-        .into_iter()
-        .map(|r: Repo| {
+    let total = list.repos.len();
+    let end = offset.saturating_add(limit).min(total);
+    let start = offset.min(total);
+    let page = &list.repos[start..end];
+    let rows: Vec<RepoRow> = page
+        .iter()
+        .map(|r: &Repo| {
             let in_projects: Vec<String> = projects
                 .iter()
                 .filter(|p| {
@@ -470,13 +509,15 @@ async fn load_repo_rows(state: &AppState) -> anyhow::Result<Vec<RepoRow>> {
                 .map(|p| p.slug.clone())
                 .collect();
             RepoRow {
-                full_name: r.full_name,
+                full_name: r.full_name.clone(),
                 private: r.private,
-                default_branch: r.default_branch,
+                default_branch: r.default_branch.clone(),
                 in_projects,
             }
         })
-        .collect())
+        .collect();
+    let has_more = end < total;
+    Ok((rows, has_more))
 }
 
 fn html_escape(s: &str) -> String {
@@ -578,6 +619,9 @@ mod tests {
                 default_branch: "main".into(),
                 in_projects: vec![],
             }],
+            offset: 0,
+            has_more: false,
+            next_offset: 1,
         }
         .render()
         .unwrap();
@@ -585,5 +629,43 @@ mod tests {
         assert!(html.contains("Add to project") || html.contains("add"));
         assert!(html.contains("private"));
         assert!(html.contains("github.com"));
+    }
+
+    #[test]
+    fn repos_partial_show_more() {
+        let html = ReposPartial {
+            github_user: "alice".into(),
+            github_host: "github.com".into(),
+            projects: vec![],
+            repos: vec![RepoRow {
+                full_name: "alice/a".into(),
+                private: false,
+                default_branch: "main".into(),
+                in_projects: vec![],
+            }],
+            offset: 0,
+            has_more: true,
+            next_offset: 40,
+        }
+        .render()
+        .unwrap();
+        assert!(html.contains("Show more"));
+        assert!(html.contains("offset=40"));
+    }
+
+    #[test]
+    fn dashboard_shell_does_not_block_on_create_repos() {
+        let html = DashboardTemplate {
+            healthy: true,
+            projects_dir: "/tmp/p".into(),
+            github_user: "alice".into(),
+            github_host: "github.com".into(),
+            create_repos: vec![],
+        }
+        .render()
+        .unwrap();
+        // Projects load immediately; repos staggered so projects paint first.
+        assert!(html.contains("hx-get=\"/partials/projects\""));
+        assert!(html.contains("hx-trigger=\"load delay:50ms\"") || html.contains("delay:50ms"));
     }
 }
