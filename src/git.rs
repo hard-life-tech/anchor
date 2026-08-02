@@ -441,4 +441,70 @@ mod tests {
         // dirty file still there
         assert!(cursor.join("dirty.txt").exists());
     }
+
+    #[tokio::test]
+    async fn sync_skips_diverged_worktree() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        let remote = init_upstream(&src).await;
+        let projects = tmp.path().join("projects");
+
+        sync_project(&projects, "demo", &remote, "main", "unused")
+            .await
+            .unwrap();
+
+        let cursor = worktree_dir(&projects, "demo", "cursor");
+        git(&["config", "user.email", "test@example.com"], Some(&cursor))
+            .await
+            .ensure_success("email")
+            .unwrap();
+        git(&["config", "user.name", "Test"], Some(&cursor))
+            .await
+            .ensure_success("name")
+            .unwrap();
+        tokio::fs::write(cursor.join("local.txt"), "mine\n").await.unwrap();
+        git(&["add", "local.txt"], Some(&cursor))
+            .await
+            .ensure_success("add local")
+            .unwrap();
+        git(&["commit", "-m", "local"], Some(&cursor))
+            .await
+            .ensure_success("commit local")
+            .unwrap();
+
+        // Advance upstream so cursor is both ahead and behind.
+        let work = tmp.path().join("upstream-work");
+        git(&["clone", &remote, &work.to_string_lossy()], None)
+            .await
+            .ensure_success("clone upstream work")
+            .unwrap();
+        git(&["config", "user.email", "test@example.com"], Some(&work))
+            .await
+            .ensure_success("email")
+            .unwrap();
+        git(&["config", "user.name", "Test"], Some(&work))
+            .await
+            .ensure_success("name")
+            .unwrap();
+        tokio::fs::write(work.join("README.md"), "v2\n").await.unwrap();
+        git(&["add", "README.md"], Some(&work))
+            .await
+            .ensure_success("add remote")
+            .unwrap();
+        git(&["commit", "-m", "remote"], Some(&work))
+            .await
+            .ensure_success("commit remote")
+            .unwrap();
+        git(&["push", "origin", "main"], Some(&work))
+            .await
+            .ensure_success("push")
+            .unwrap();
+
+        let (_c, _f, results) =
+            sync_project(&projects, "demo", &remote, "main", "unused").await.unwrap();
+        let cursor_r = results.iter().find(|r| r.agent == "cursor").unwrap();
+        assert_eq!(cursor_r.action, WorktreeAction::SkippedDiverged);
+        assert!(cursor_r.diverged);
+        assert!(cursor.join("local.txt").exists());
+    }
 }
