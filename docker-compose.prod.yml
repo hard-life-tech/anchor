@@ -1,0 +1,16 @@
+# docker-compose.prod.yml — no host port publish
+#
+# Use behind Traefik / Coolify / Tailscale-only reverse proxies where the
+# proxy network reaches the container on PORT (default 8080). Does not
+# replace docker-compose.yml; compose-merge overrides `ports`.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Or in Coolify: add this file as an additional Compose override.
+
+services:
+  anchor:
+    ports: !reset []
+    # Attach to your proxy network in the Coolify UI / Traefik stack, e.g.:
+    # networks:
+    #   - coolify

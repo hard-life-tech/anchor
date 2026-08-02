@@ -20,8 +20,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-    # If deploying behind Traefik/Coolify, drop the ports mapping above and
-    # attach this service to your existing proxy network + labels instead.
+    # Prod / Traefik / Coolify: use docker-compose.prod.yml to drop host
+    # port publish and attach to your proxy network instead.
     # Keep it off the public internet either way — Tailscale only.
 
   # Optional: browser terminal onto the same tmux session Anchor creates.

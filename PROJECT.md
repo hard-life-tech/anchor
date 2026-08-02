@@ -109,7 +109,7 @@ See [docs/api-contract.md](docs/api-contract.md).
 
 ## 11. Deployment
 
-Docker multi-stage build → binary `anchor`. Compose: [docker-compose.yml](docker-compose.yml). Guide: [docs/deployment-guide.md](docs/deployment-guide.md).
+Docker multi-stage build → binary `anchor`. Compose: [docker-compose.yml](docker-compose.yml). Prod override (no host ports): [docker-compose.prod.yml](docker-compose.prod.yml). Guide: [docs/deployment-guide.md](docs/deployment-guide.md).
 
 ## 12. Documentation
 
@@ -126,4 +126,4 @@ GitHub App, webhooks, dashboard auth, built-in web terminal, multi-user Core, Ma
 - [ ] Dirty or diverged worktrees are reported and left untouched.
 - [x] `GET /api/projects` is accurate after container restart (tmux gone, disk intact) — inventory from disk; Compose e2e with live PAT still open.
 - [ ] `GET /healthz` returns `OK`; Compose brings up with only `GITHUB_TOKEN` + `GITHUB_USER`.
-- [x] Token never appears in API responses, logs, or agent pane environments — scrub + redaction unit-tested; live pane e2e open.
+- [x] Token never appears in API responses, logs, or agent pane environments — scrub + redaction unit-tested (API JSON, tracing writer, shell stderr); live pane Compose e2e open.
