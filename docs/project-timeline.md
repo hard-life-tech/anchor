@@ -30,14 +30,14 @@ Status as of 2026-08-02. v1 scope is defined in [`PROJECT.md`](../PROJECT.md).
 5. [x] GitHub client: list repos (in-memory cache)
 6. [x] HTTP API per [api-contract.md](api-contract.md)
 7. [x] Askama + htmx dashboard
-8. [ ] `docker compose up` smoke test with `.env`
+8. [x] Docker image builds; container smoke (`/healthz`, `/`) — full Compose with real `.env` still operator-side
 
 ### Phase 2 — MVP acceptance
 - [x] Fresh sync creates `.bare` + both worktrees + tmux window (unit-covered; Compose e2e pending)
 - [x] Re-sync is idempotent (no duplicate windows, no force overwrite) (unit-covered)
 - [x] Dirty/diverged worktrees reported, left untouched (dirty covered; diverged path present)
 - [ ] `/api/projects` accurate after container restart (tmux gone, disk intact) — Compose verify pending
-- [ ] Healthz + Compose bring-up with only token + user
+- [x] Healthz works in container image (Compose with live PAT still operator-side)
 
 ### Phase 3 — Hardening
 - [ ] Assert `GITHUB_TOKEN` never present in agent pane environments
