@@ -92,7 +92,7 @@ impl Config {
         let cursor_cmd = map
             .get("CURSOR_CMD")
             .cloned()
-            .unwrap_or_else(|| "cursor-agent".into());
+            .unwrap_or_else(|| "agent".into());
         let opencode_cmd = map
             .get("OPENCODE_CMD")
             .cloned()
@@ -299,7 +299,7 @@ mod tests {
         let cfg = Config::from_env_map(&base(&[])).unwrap();
         assert_eq!(cfg.projects_dir, PathBuf::from("/tmp/agent/projects"));
         assert_eq!(cfg.tmux_session, "agents");
-        assert_eq!(cfg.cursor_cmd, "cursor-agent");
+        assert_eq!(cfg.cursor_cmd, "agent");
         assert_eq!(cfg.opencode_cmd, "opencode");
         assert_eq!(cfg.port, 8080);
         assert_eq!(cfg.log_level, "info");

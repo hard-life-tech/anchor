@@ -414,19 +414,19 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let db = Db::open(tmp.path().join("anchor.db")).unwrap();
         let s = AgentSettings {
-            cursor_cmd: Some("cursor-agent".into()),
+            cursor_cmd: Some("agent".into()),
             cursor_args: "--model gpt".into(),
             opencode_enabled: false,
             ..AgentSettings::default()
         };
         db.save_agent_settings(&s).unwrap();
         let loaded = db.load_agent_settings().unwrap();
-        assert_eq!(loaded.cursor_cmd.as_deref(), Some("cursor-agent"));
+        assert_eq!(loaded.cursor_cmd.as_deref(), Some("agent"));
         assert_eq!(loaded.cursor_args, "--model gpt");
         assert!(!loaded.opencode_enabled);
         assert_eq!(
             loaded.resolve_cmd("cursor", "fallback"),
-            "cursor-agent --model gpt"
+            "agent --model gpt"
         );
         assert_eq!(loaded.resolve_cmd("opencode", "opencode"), "bash");
     }

@@ -49,6 +49,11 @@ pub struct WorktreeStatus {
 
 const AGENTS: &[(&str, &str)] = &[("cursor", "agent/cursor"), ("opencode", "agent/opencode")];
 
+/// Default OpenCode config for agent workspace roots (nested multi-repo layout).
+/// Kept in sync with repo-root `opencode.json` (PermissionActionConfig schema).
+const WORKSPACE_OPENCODE_JSON: &str = include_str!("../opencode.json");
+const WORKSPACE_AGENTS_MD: &str = include_str!("../AGENTS.md");
+
 /// Owner-scoped filesystem key (avoids short-name collisions).
 pub fn repo_key(owner: &str, name: &str) -> String {
     format!("{owner}__{name}")
@@ -60,6 +65,51 @@ pub fn project_dir(projects_dir: &Path, slug: &str) -> PathBuf {
 
 pub fn agent_workspace(projects_dir: &Path, slug: &str, agent: &str) -> PathBuf {
     project_dir(projects_dir, slug).join(agent)
+}
+
+/// Seed `opencode.json` + `AGENTS.md` at agent workspace roots when the cwd is
+/// not itself a git checkout (nested `cursor|opencode/<owner>__<repo>/` layout).
+/// Skips legacy flat worktrees where the workspace *is* the repo (would dirty git).
+pub async fn ensure_agent_workspace_configs(projects_dir: &Path, slug: &str) -> Result<()> {
+    for (agent, _) in AGENTS {
+        let ws = agent_workspace(projects_dir, slug, agent);
+        tokio::fs::create_dir_all(&ws)
+            .await
+            .with_context(|| format!("create {agent} workspace"))?;
+        if ws.join(".git").exists() {
+            continue;
+        }
+        write_if_missing_or_invalid_opencode(&ws.join("opencode.json")).await?;
+        let agents_md = ws.join("AGENTS.md");
+        if !agents_md.exists() {
+            tokio::fs::write(&agents_md, WORKSPACE_AGENTS_MD)
+                .await
+                .with_context(|| format!("write {} AGENTS.md", ws.display()))?;
+        }
+    }
+    Ok(())
+}
+
+fn opencode_config_needs_repair(contents: &str) -> bool {
+    // Pre-rework nesting: permission.tools.{bash,read} must be Action strings,
+    // not pattern maps. Pattern maps belong under permission.bash / permission.read.
+    contents.contains("\"tools\"")
+        && contents.contains("\"permission\"")
+        && (contents.contains("\"bash\"") || contents.contains("\"read\""))
+}
+
+async fn write_if_missing_or_invalid_opencode(path: &Path) -> Result<()> {
+    let rewrite = match tokio::fs::read_to_string(path).await {
+        Ok(s) => opencode_config_needs_repair(&s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
+    };
+    if rewrite {
+        tokio::fs::write(path, WORKSPACE_OPENCODE_JSON)
+            .await
+            .with_context(|| format!("write {}", path.display()))?;
+    }
+    Ok(())
 }
 
 pub fn bare_dir(projects_dir: &Path, slug: &str, owner: &str, name: &str) -> PathBuf {
@@ -245,6 +295,7 @@ pub async fn sync_member(
             .await
             .with_context(|| format!("create {agent} workspace"))?;
     }
+    ensure_agent_workspace_configs(projects_dir, slug).await?;
 
     if !bare.exists() {
         let out = shell::run_git(
@@ -668,6 +719,45 @@ mod tests {
             worktree_dir(Path::new("/p"), "plat", "cursor", "alice", "anchor"),
             PathBuf::from("/p/plat/cursor/alice__anchor")
         );
+    }
+
+    #[test]
+    fn opencode_repair_detects_nested_tools() {
+        let bad = r#"{ "permission": { "bash": "ask", "tools": { "bash": { "pwd": "allow" } } } }"#;
+        let good = include_str!("../opencode.json");
+        assert!(opencode_config_needs_repair(bad));
+        assert!(!opencode_config_needs_repair(good));
+    }
+
+    #[tokio::test]
+    async fn seeds_workspace_opencode_when_not_git_checkout() {
+        let tmp = TempDir::new().unwrap();
+        let projects = tmp.path();
+        ensure_agent_workspace_configs(projects, "plat")
+            .await
+            .unwrap();
+        let oc = agent_workspace(projects, "plat", "opencode").join("opencode.json");
+        let cur = agent_workspace(projects, "plat", "cursor").join("opencode.json");
+        assert!(oc.is_file());
+        assert!(cur.is_file());
+        let body = std::fs::read_to_string(&oc).unwrap();
+        assert!(!opencode_config_needs_repair(&body));
+        assert!(agent_workspace(projects, "plat", "opencode")
+            .join("AGENTS.md")
+            .is_file());
+    }
+
+    #[tokio::test]
+    async fn skips_seed_when_workspace_is_git_checkout() {
+        let tmp = TempDir::new().unwrap();
+        let projects = tmp.path();
+        let ws = agent_workspace(projects, "plat", "opencode");
+        std::fs::create_dir_all(&ws).unwrap();
+        std::fs::write(ws.join(".git"), "gitdir: /tmp/fake").unwrap();
+        ensure_agent_workspace_configs(projects, "plat")
+            .await
+            .unwrap();
+        assert!(!ws.join("opencode.json").exists());
     }
 
     #[test]

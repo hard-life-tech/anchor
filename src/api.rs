@@ -578,6 +578,9 @@ async fn ensure_tmux(
     tokio::fs::create_dir_all(&opencode_cwd)
         .await
         .map_err(|e| AppError::Other(e.into()))?;
+    git::ensure_agent_workspace_configs(&state.config.projects_dir, slug)
+        .await
+        .map_err(AppError::Other)?;
 
     let (cursor_cmd, opencode_cmd) = settings::effective_cmds(state);
     let legacy: Vec<&str> = members.iter().map(|m| m.name.as_str()).collect();
