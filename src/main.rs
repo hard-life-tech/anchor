@@ -36,7 +36,11 @@ async fn main() -> anyhow::Result<()> {
         .with_writer(crate::error::RedactingMakeWriter::stdout())
         .init();
 
-    let github = GitHubClient::new(config.github_token.clone(), config.github_user.clone());
+    let github = GitHubClient::new(
+        config.github_token.clone(),
+        config.github_user.clone(),
+        config.github_api_url.clone(),
+    );
     let state = AppState {
         config: Arc::new(config),
         github: Arc::new(github),
