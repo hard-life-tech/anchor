@@ -19,17 +19,17 @@ Status as of 2026-08-02. v1 scope is defined in [`PROJECT.md`](../PROJECT.md).
 - [x] `docs/` tree matching conceptual / features / ADR layout
 - [x] Root agent safety files (`AGENTS.md`, `opencode.json`, `.cursor/*`, `.cursorignore`)
 - [x] Confirm product branding: **Anchor** (Forge = historical alias only)
-- [ ] Create public `hard-life-tech/anchor` repo
+- [x] Create public `hard-life-tech/anchor` repo
 - [x] Choose LICENSE for Core: **Apache-2.0**
 
 ### Phase 1 — Core scaffold (priority order)
-1. [ ] Cargo workspace / binary `anchor` matching Dockerfile `COPY` path
-2. [ ] Config from env (`GITHUB_TOKEN`, `GITHUB_USER`, `PROJECTS_DIR`, …)
-3. [ ] Git module: bare clone, worktree add, fetch, fast-forward-only update
-4. [ ] Tmux module: session/window/pane ensure (idempotent, never kill live panes)
-5. [ ] GitHub client: list repos (in-memory cache)
-6. [ ] HTTP API per [api-contract.md](api-contract.md)
-7. [ ] Askama + htmx dashboard (minimal)
+1. [x] Cargo workspace / binary `anchor` matching Dockerfile `COPY` path
+2. [x] Config from env (`GITHUB_TOKEN`, `GITHUB_USER`, `PROJECTS_DIR`, …)
+3. [x] Git module: bare clone, worktree add, fetch, fast-forward-only update
+4. [x] Tmux module: session/window/pane ensure (idempotent, never kill live panes)
+5. [x] GitHub client: list repos (in-memory cache)
+6. [x] HTTP API per [api-contract.md](api-contract.md)
+7. [ ] Askama + htmx dashboard (minimal HTML placeholder for now)
 8. [ ] `docker compose up` smoke test with `.env`
 
 ### Phase 2 — MVP acceptance
@@ -46,8 +46,8 @@ Status as of 2026-08-02. v1 scope is defined in [`PROJECT.md`](../PROJECT.md).
 - [ ] Optional: drop Compose host port publish in prod examples
 
 ### Phase 4 — OSS launch
-- [ ] `gh` auth available for Hard Life Tech
-- [ ] Remote + README badges + issue templates
+- [x] `gh` auth available for Hard Life Tech
+- [x] Remote + README (badges / issue templates still open)
 - [ ] GitHub Projects (or Enterprise Projects) board for Core roadmap — see [project-management.md](conceptual/workflow/project-management.md)
 
 ### Phase 5 — Management SaaS (private)
@@ -60,15 +60,15 @@ Status as of 2026-08-02. v1 scope is defined in [`PROJECT.md`](../PROJECT.md).
 | ID | Task | Priority | Depends |
 |----|------|----------|---------|
 | T01 | Finalize naming (Anchor) in public messaging | P0 | Done |
-| T02 | Scaffold `Cargo.toml` + `src/main.rs` hello healthz | P0 | — |
-| T03 | Implement config + tracing | P0 | T02 |
-| T04 | Implement git worktree sync (TDD) | P0 | T03 |
-| T05 | Implement tmux ensure (TDD) | P0 | T03 |
-| T06 | Wire sync API + GitHub list | P1 | T04, T05 |
-| T07 | Minimal dashboard | P2 | T06 |
+| T02 | Scaffold `Cargo.toml` + `src/main.rs` hello healthz | P0 | Done |
+| T03 | Implement config + tracing | P0 | Done |
+| T04 | Implement git worktree sync (TDD) | P0 | Done |
+| T05 | Implement tmux ensure (TDD) | P0 | Done |
+| T06 | Wire sync API + GitHub list | P1 | Done |
+| T07 | Minimal dashboard | P2 | Partial |
 | T08 | Compose e2e on VPS | P1 | T06 |
-| T09 | Create GH org/repo when `gh` ready | P1 | T01 |
-| T10 | Publish OSS LICENSE + CONTRIBUTING | P2 | T09 |
+| T09 | Create GH org/repo when `gh` ready | P1 | Done |
+| T10 | Publish OSS LICENSE + CONTRIBUTING | P2 | Partial |
 
 ## Out of scope (tracked, not scheduled)
 
