@@ -76,13 +76,8 @@ impl GitHubClient {
     }
 
     pub async fn list_repos(&self) -> Result<RepoList> {
-        {
-            let guard = self.cache.read().await;
-            if let Some(entry) = guard.as_ref() {
-                if entry.fetched_at.elapsed() < CACHE_TTL {
-                    return Ok(entry.list.clone());
-                }
-            }
+        if let Some(list) = self.cached_repos().await {
+            return Ok(list);
         }
 
         let mut repos = Vec::new();
@@ -116,6 +111,24 @@ impl GitHubClient {
             });
         }
         Ok(list)
+    }
+
+    /// Return a fresh cache hit, if any (within [`CACHE_TTL`]).
+    pub async fn cached_repos(&self) -> Option<RepoList> {
+        let guard = self.cache.read().await;
+        guard.as_ref().and_then(|entry| {
+            if entry.fetched_at.elapsed() < CACHE_TTL {
+                Some(entry.list.clone())
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Drop the in-memory `/user/repos` cache (e.g. after Sync changes on-disk state).
+    pub async fn invalidate_cache(&self) {
+        let mut guard = self.cache.write().await;
+        *guard = None;
     }
 
     async fn fetch_repos_page(&self, url: &str) -> Result<Vec<GhRepo>> {
@@ -204,5 +217,57 @@ mod tests {
         let dbg = format!("{gh:?}");
         assert!(!dbg.contains("super-secret"));
         assert!(dbg.contains("[redacted]"));
+    }
+
+    #[tokio::test]
+    async fn cache_hit_and_invalidate() {
+        let gh = GitHubClient::new("t".into(), "alice".into(), "https://api.github.com".into());
+        assert!(gh.cached_repos().await.is_none());
+
+        let list = RepoList {
+            repos: vec![Repo {
+                name: "anchor".into(),
+                full_name: "alice/anchor".into(),
+                private: true,
+                default_branch: "main".into(),
+                clone_url: "https://github.com/alice/anchor.git".into(),
+            }],
+            cached_at: Utc::now(),
+        };
+        {
+            let mut guard = gh.cache.write().await;
+            *guard = Some(CacheEntry {
+                list: list.clone(),
+                fetched_at: Instant::now(),
+            });
+        }
+
+        let hit = gh.cached_repos().await.expect("fresh cache");
+        assert_eq!(hit.repos.len(), 1);
+        assert_eq!(hit.repos[0].name, "anchor");
+
+        // list_repos must serve cache without network when fresh.
+        let served = gh.list_repos().await.expect("from cache");
+        assert_eq!(served.repos[0].full_name, "alice/anchor");
+
+        gh.invalidate_cache().await;
+        assert!(gh.cached_repos().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn expired_cache_is_miss() {
+        let gh = GitHubClient::new("t".into(), "u".into(), "https://api.github.com".into());
+        {
+            let mut guard = gh.cache.write().await;
+            *guard = Some(CacheEntry {
+                list: RepoList {
+                    repos: vec![],
+                    cached_at: Utc::now(),
+                },
+                // Older than CACHE_TTL (180s).
+                fetched_at: Instant::now() - CACHE_TTL - Duration::from_secs(1),
+            });
+        }
+        assert!(gh.cached_repos().await.is_none());
     }
 }
