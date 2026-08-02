@@ -41,9 +41,9 @@ Status as of 2026-08-02. v1 scope is defined in [`PROJECT.md`](../PROJECT.md).
 
 ### Phase 3 — Hardening
 - [x] Assert `GITHUB_TOKEN` never present in agent pane / session env (scrub + unit tests; Compose confirm — [#3](https://github.com/hard-life-tech/anchor/issues/3))
-- [x] Deny-path tests for API errors (PAT shapes redacted); tracing audit still open — [#4](https://github.com/hard-life-tech/anchor/issues/4)
-- [ ] Document Tailscale / Coolify production checklist — [#5](https://github.com/hard-life-tech/anchor/issues/5)
-- [ ] Optional: drop Compose host port publish in prod examples — [#6](https://github.com/hard-life-tech/anchor/issues/6)
+- [x] Deny-path tests: API errors + tracing writer redact PAT shapes; shell stderr scrubbed — [#4](https://github.com/hard-life-tech/anchor/issues/4)
+- [x] Document Tailscale / Coolify production checklist — [#5](https://github.com/hard-life-tech/anchor/issues/5)
+- [x] Optional: drop Compose host port publish in prod examples — [#6](https://github.com/hard-life-tech/anchor/issues/6)
 
 ### Phase 4 — OSS launch
 - [x] `gh` auth available for Hard Life Tech

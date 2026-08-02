@@ -77,6 +77,70 @@ Restart kills the live tmux session (same as host reboot). Worktrees and agent a
 3. Remove host `ports:` publish; attach to the proxy network with internal labels.
 4. Restrict access to Tailscale (or Coolify's private networking). Do not put Anchor on a public hostname without auth (auth is out of scope for v1).
 
+Use the prod override (drops host port publish):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+See [`docker-compose.prod.yml`](../docker-compose.prod.yml).
+
+---
+
+## Tailscale + Coolify checklist
+
+Copy-paste operator checklist for a private VPS deploy.
+
+### Host / Tailscale
+
+- [ ] VPS has Docker + Compose installed
+- [ ] Tailscale installed and logged in on the host (`tailscale status` shows the node)
+- [ ] MagicDNS or known Tailscale IP recorded for later access
+- [ ] Host firewall: do **not** open `8080/tcp` to the public internet
+- [ ] Prefer accessing Anchor only via Tailscale IP / MagicDNS name
+
+### Secrets
+
+- [ ] Copy `.env.example` → `.env` on the host (or Coolify secret store)
+- [ ] Set `GITHUB_TOKEN` (fine-grained PAT, `repo` only) and `GITHUB_USER`
+- [ ] Confirm `.env` is not committed (`git check-ignore -v .env`)
+- [ ] Never put the PAT in Dockerfile `ARG` / build-time env
+
+### Compose (Tailscale-only, no public ports)
+
+```bash
+cp .env.example .env   # edit token + user
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose ps
+docker compose exec anchor curl -fsS http://127.0.0.1:8080/healthz
+```
+
+- [ ] `healthz` returns `OK` from inside the container
+- [ ] From a Tailscale peer: reach the service via proxy or `host:8080` only if you intentionally published ports (dev `docker-compose.yml` alone). Prod override publishes **no** host ports — reach via Coolify/Traefik on the Docker network, or temporarily use the base compose for Tailscale-host-local publish.
+
+### Coolify
+
+- [ ] New resource → Docker Compose → this repo (or uploaded compose)
+- [ ] Add override file `docker-compose.prod.yml` (or remove `ports:` in the Coolify editor)
+- [ ] Attach service to Coolify’s proxy network; set Traefik labels / Coolify domains as needed
+- [ ] Domain should resolve only on Tailscale (split DNS / private hostname) — not a public A record without auth
+- [ ] Inject `GITHUB_TOKEN` and `GITHUB_USER` as runtime secrets
+- [ ] Deploy; confirm Coolify healthcheck or `GET /healthz` succeeds
+- [ ] Confirm Logs UI never shows a raw PAT (deny-path redaction is built in; still avoid echoing secrets in custom commands)
+
+### Post-deploy smoke
+
+- [ ] `GET /healthz` → `OK`
+- [ ] `GET /` loads the dashboard
+- [ ] `GET /api/repos` lists repos (PAT works)
+- [ ] One `POST /api/projects/{repo}/sync` creates worktrees + tmux window
+- [ ] `tmux attach -t agents` (or ttyd) — panes have **no** `GITHUB_TOKEN` in env
+
+### Rollback / restart notes
+
+- Restart drops live tmux panes; disk worktrees and agent auth on `agent-home` remain
+- Re-run sync to recreate windows after restart
+
 ---
 
 ## Optional ttyd sidecar
