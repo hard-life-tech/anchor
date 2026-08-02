@@ -14,22 +14,34 @@
           <span class="badge {% if r.private %}private{% else %}public{% endif %}">
             {% if r.private %}private{% else %}public{% endif %}
           </span>
-          {% if r.on_disk %}
-            <span class="badge on-disk">on disk</span>
-          {% endif %}
+          {% for slug in r.in_projects %}
+            <a class="badge on-disk" href="/projects/{{ slug }}">{{ slug }}</a>
+          {% endfor %}
         </div>
         <div class="repo-meta">
           {{ r.default_branch }} · {{ github_host }}
         </div>
       </div>
-      <button
-        type="button"
-        class="primary"
-        hx-post="/partials/projects/{{ r.name }}/sync"
-        hx-target="#projects"
-        hx-swap="innerHTML swap:150ms"
-        hx-indicator="this"
-      >{% if r.on_disk %}Re-sync{% else %}Sync{% endif %}</button>
+      <div class="repo-actions">
+        {% if !projects.is_empty() %}
+        <form
+          class="inline-form add-to-project"
+          hx-post="/partials/projects/{{ projects[0].slug }}/repos"
+          hx-target="#repos"
+          hx-swap="innerHTML swap:150ms"
+        >
+          <input type="hidden" name="full_name" value="{{ r.full_name }}">
+          <select name="project_slug" aria-label="Project">
+            {% for p in projects %}
+              <option value="{{ p.slug }}">{{ p.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit">Add to project</button>
+        </form>
+        {% else %}
+          <span class="chip meta">create a project first</span>
+        {% endif %}
+      </div>
     </li>
     {% endfor %}
   </ul>

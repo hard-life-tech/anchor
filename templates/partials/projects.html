@@ -1,11 +1,11 @@
 {% if projects.is_empty() %}
-  <p class="empty">No projects yet — sync a private or public repo from the list below.</p>
+  <p class="empty">No projects yet — create one below or add repos from the list.</p>
 {% else %}
   <table class="table">
     <thead>
       <tr>
         <th>Project</th>
-        <th>Worktrees</th>
+        <th>Members</th>
         <th class="hide-sm">Sync</th>
         <th class="hide-sm">Tmux</th>
         <th></th>
@@ -17,29 +17,20 @@
       <tr>
         <td>
           <div class="project-name">
-            <span class="mono">{{ p.name }}</span>
-            {% match p.visibility %}
-              {% when Some with (vis) %}
-                <span class="badge {{ vis }}">{{ vis }}</span>
-              {% when None %}
-            {% endmatch %}
+            <a class="mono" href="/projects/{{ p.slug }}">{{ p.slug }}</a>
+            {% if p.name != p.slug %}
+              <span class="meta">{{ p.name }}</span>
+            {% endif %}
           </div>
         </td>
         <td>
+          <span class="chip meta">{{ p.member_count }} repo{% if p.member_count != 1 %}s{% endif %}</span>
           <div class="chips">
-            {% for wt in p.worktrees %}
-              <span class="chip {% if wt.dirty %}dirty{% elif wt.diverged %}diverged{% else %}ok{% endif %}">
-                <span class="mono">{{ wt.agent }}</span>
-                {% if wt.dirty %}<span>dirty</span>{% endif %}
-                {% if wt.diverged %}<span>diverged</span>{% endif %}
-                {% if wt.ahead > 0 || wt.behind > 0 %}
-                  <span class="meta">+{{ wt.ahead }}/−{{ wt.behind }}</span>
-                {% endif %}
+            {% for m in p.members %}
+              <span class="chip {% if m.private %}meta{% else %}ok{% endif %}" title="{{ m.full_name }}">
+                <span class="mono">{{ m.name }}</span>
               </span>
             {% endfor %}
-            {% if p.worktrees.is_empty() %}
-              <span class="chip meta">no worktrees</span>
-            {% endif %}
           </div>
         </td>
         <td class="hide-sm">
@@ -62,7 +53,7 @@
         </td>
         <td>
           {% if p.tmux_window_exists %}
-            <a class="btn-link" href="/projects/{{ p.name }}/terminal?agent=cursor">Terminal</a>
+            <a class="btn-link" href="/projects/{{ p.slug }}/terminal?agent=cursor">Terminal</a>
           {% else %}
             <span class="chip meta" title="Sync to create tmux panes">no term</span>
           {% endif %}
@@ -71,7 +62,7 @@
           <button
             type="button"
             class="primary"
-            hx-post="/partials/projects/{{ p.name }}/sync"
+            hx-post="/partials/projects/{{ p.slug }}/sync"
             hx-target="#projects"
             hx-swap="innerHTML swap:150ms"
             hx-indicator="this"

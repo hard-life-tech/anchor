@@ -23,6 +23,7 @@ dependencies = [
  "bytes",
  "chrono",
  "cookie",
+ "form_urlencoded",
  "futures-util",
  "hex",
  "hmac",

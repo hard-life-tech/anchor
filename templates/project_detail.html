@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ project.slug }} — Anchor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div class="wrap">
+    <header class="header">
+      <div>
+        <h1 class="brand"><a href="/" style="color:inherit;text-decoration:none">Anchor</a></h1>
+        <p class="host-line">
+          <span class="mono">{{ github_user }}</span>
+          ·
+          <span class="mono">{{ github_host }}</span>
+        </p>
+      </div>
+      <div class="header-right">
+        <nav class="nav">
+          <a href="/">Projects</a>
+          <a href="/settings">Settings</a>
+          <form method="post" action="/logout" class="inline-form">
+            <button type="submit" class="linkish">Sign out</button>
+          </form>
+        </nav>
+      </div>
+    </header>
+
+    <div id="flash"></div>
+
+    <section class="section">
+      <p class="lead"><a href="/">← Projects</a></p>
+      <h2 class="mono">{{ project.slug }}</h2>
+      <p class="lead">{{ project.name }} · {{ project.member_count }} member{% if project.member_count != 1 %}s{% endif %}</p>
+      <div class="toolbar">
+        <button
+          type="button"
+          class="primary"
+          hx-post="/partials/projects/{{ project.slug }}/sync"
+          hx-target="#flash"
+          hx-swap="innerHTML"
+        >Sync all</button>
+        {% if project.tmux_window_exists %}
+          <a class="btn-link" href="/projects/{{ project.slug }}/terminal?agent=cursor">Open terminal (cursor)</a>
+          <a class="btn-link" href="/projects/{{ project.slug }}/terminal?agent=opencode">Open terminal (opencode)</a>
+        {% else %}
+          <span class="chip meta">Sync to create tmux window</span>
+        {% endif %}
+      </div>
+      {% match project.last_sync %}
+        {% when Some with (sync) %}
+          <p class="lead">Last sync: <span class="chip {{ sync.chip_class() }}">{{ sync.label() }}</span> — {{ sync.message }}</p>
+        {% when None %}
+      {% endmatch %}
+    </section>
+
+    <section class="section" aria-labelledby="members-heading">
+      <h2 id="members-heading">Members</h2>
+      {% if project.members.is_empty() %}
+        <p class="empty">No members — add repos from the home page.</p>
+      {% else %}
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Repo</th>
+              <th>Worktrees</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in project.members %}
+            <tr>
+              <td>
+                <span class="mono">{{ m.full_name }}</span>
+                <span class="badge {% if m.private %}private{% else %}public{% endif %}">
+                  {% if m.private %}private{% else %}public{% endif %}
+                </span>
+              </td>
+              <td>
+                <div class="chips">
+                  {% for wt in m.worktrees %}
+                    <span class="chip {% if wt.dirty %}dirty{% elif wt.diverged %}diverged{% else %}ok{% endif %}">
+                      <span class="mono">{{ wt.agent }}</span>
+                      {% if wt.dirty %}<span>dirty</span>{% endif %}
+                      {% if wt.diverged %}<span>diverged</span>{% endif %}
+                      {% if wt.ahead > 0 || wt.behind > 0 %}
+                        <span class="meta">+{{ wt.ahead }}/−{{ wt.behind }}</span>
+                      {% endif %}
+                    </span>
+                  {% endfor %}
+                  {% if m.worktrees.is_empty() %}
+                    <span class="chip meta">not synced</span>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                <form method="post" action="/api/projects/{{ project.slug }}/repos/{{ m.owner }}/{{ m.name }}/sync" class="inline-form"
+                  onsubmit="event.preventDefault(); fetch(this.action,{method:'POST',credentials:'same-origin'}).then(()=>location.reload());">
+                  <button type="submit">Sync</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </section>
+  </div>
+</body>
+</html>

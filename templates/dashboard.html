@@ -42,9 +42,48 @@
 
     <div id="flash"></div>
 
+    <section class="section" aria-labelledby="create-heading" id="create-project">
+      <h2 id="create-heading">Create project</h2>
+      <p class="lead">Name a scope and pick one or more GitHub repos. Sync fills sibling worktrees under the project.</p>
+      <form
+        class="create-form"
+        hx-post="/partials/projects"
+        hx-target="#projects"
+        hx-swap="innerHTML swap:150ms"
+      >
+        <div class="form-row">
+          <label>
+            Name
+            <input type="text" name="name" required placeholder="Platform" autocomplete="off">
+          </label>
+          <label>
+            Slug <span class="meta">(optional)</span>
+            <input type="text" name="slug" placeholder="platform" pattern="[a-z0-9][a-z0-9_-]*" autocomplete="off">
+          </label>
+        </div>
+        {% if !create_repos.is_empty() %}
+        <fieldset class="repo-picker">
+          <legend>Initial repos</legend>
+          <div class="repo-picker-grid">
+            {% for r in create_repos %}
+            <label class="repo-pick">
+              <input type="checkbox" name="repos" value="{{ r.full_name }}">
+              <span class="mono">{{ r.full_name }}</span>
+              <span class="badge {% if r.private %}private{% else %}public{% endif %}">
+                {% if r.private %}private{% else %}public{% endif %}
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        {% endif %}
+        <button type="submit" class="primary">Create project</button>
+      </form>
+    </section>
+
     <section class="section" aria-labelledby="projects-heading">
       <h2 id="projects-heading">Projects</h2>
-      <p class="lead">On-disk worktrees, last sync result, and tmux window status.</p>
+      <p class="lead">Member repos, last sync rollup, and tmux window status.</p>
       <div class="toolbar">
         <button
           type="button"
@@ -74,18 +113,13 @@
             <div class="skeleton-line w-28"></div>
             <div class="skeleton-line w-16"></div>
           </div>
-          <div class="skeleton-row">
-            <div class="skeleton-line w-44"></div>
-            <div class="skeleton-line w-20"></div>
-            <div class="skeleton-line w-16"></div>
-          </div>
         </div>
       </div>
     </section>
 
     <section class="section" aria-labelledby="repos-heading">
       <h2 id="repos-heading">GitHub repos</h2>
-      <p class="lead">Private and org repos your token can access — sync creates bare clone, worktrees, and tmux panes.</p>
+      <p class="lead">Add a repo to an existing project — agents share the project workspace root.</p>
       <div class="toolbar">
         <button
           type="button"
@@ -107,27 +141,6 @@
           <div class="skeleton-row repo">
             <div class="skeleton-stack">
               <div class="skeleton-line w-48"></div>
-              <div class="skeleton-line w-24"></div>
-            </div>
-            <div class="skeleton-btn"></div>
-          </div>
-          <div class="skeleton-row repo">
-            <div class="skeleton-stack">
-              <div class="skeleton-line w-40"></div>
-              <div class="skeleton-line w-20"></div>
-            </div>
-            <div class="skeleton-btn"></div>
-          </div>
-          <div class="skeleton-row repo">
-            <div class="skeleton-stack">
-              <div class="skeleton-line w-52"></div>
-              <div class="skeleton-line w-28"></div>
-            </div>
-            <div class="skeleton-btn"></div>
-          </div>
-          <div class="skeleton-row repo">
-            <div class="skeleton-stack">
-              <div class="skeleton-line w-36"></div>
               <div class="skeleton-line w-24"></div>
             </div>
             <div class="skeleton-btn"></div>
