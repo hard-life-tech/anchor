@@ -23,9 +23,11 @@ $PROJECTS_DIR/<repo>/
 - **Never** force-overwrite dirty or diverged worktrees — report and skip.
 - Idempotent: safe to call repeatedly.
 - After git steps, ensure tmux (F-003).
+- HTTPS auth uses process-local `Authorization: Basic` via `GIT_CONFIG_*` (not token-in-URL, not argv). Never log the token.
 
 ## Acceptance
 
 - [ ] Fresh sync creates bare + both worktrees
 - [ ] Re-sync does not duplicate worktrees or clobber dirty state
 - [ ] Response lists per-worktree `action` including skip reasons
+- [x] Private/enterprise repos authenticate without TTY username prompts

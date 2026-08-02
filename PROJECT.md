@@ -62,8 +62,10 @@ Shared tmux session `$TMUX_SESSION` (default `agents`); one window per repo.
 
 | Variable | Required | Default | Notes |
 |----------|----------|---------|-------|
-| `GITHUB_TOKEN` | yes | — | Fine-grained PAT, `repo` scope; **process env only** |
-| `GITHUB_USER` | yes | — | Account whose repos to list |
+| `GITHUB_TOKEN` | yes | — | Fine-grained PAT, `repo` / Contents read; **process env only** |
+| `GITHUB_USER` | yes | — | Account shown on the dashboard |
+| `GITHUB_HOST` | no | `github.com` | Hostname for display/clone context (GHES: `github.example.com`) |
+| `GITHUB_API_URL` | no | `https://api.github.com` (or `https://$GITHUB_HOST/api/v3` when host ≠ github.com) | REST API base for listing |
 | `PROJECTS_DIR` | no | `$HOME/projects` | Inside container: `/home/agent/projects` |
 | `TMUX_SESSION` | no | `agents` | Shared tmux session name |
 | `CURSOR_CMD` | no | `cursor-agent` | Left pane command |

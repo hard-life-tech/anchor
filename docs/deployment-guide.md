@@ -28,8 +28,10 @@ Copy `.env.example` → `.env` (never commit `.env`):
 
 | Variable | Required | Default | Notes |
 |----------|----------|---------|-------|
-| `GITHUB_TOKEN` | yes | — | PAT; Anchor **process** env only |
-| `GITHUB_USER` | yes | — | Account whose repos to list |
+| `GITHUB_TOKEN` | yes | — | PAT with private repo access; Anchor **process** env only |
+| `GITHUB_USER` | yes | — | Account shown on the dashboard |
+| `GITHUB_HOST` | no | `github.com` | GHES hostname if not github.com |
+| `GITHUB_API_URL` | no | derived from host | Override REST base for GHES |
 | `PROJECTS_DIR` | no | `$HOME/projects` | Inside container: `/home/agent/projects` |
 | `TMUX_SESSION` | no | `agents` | Shared tmux session name |
 | `CURSOR_CMD` | no | `cursor-agent` | Left pane command |

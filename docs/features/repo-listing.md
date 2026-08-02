@@ -9,13 +9,16 @@ Show the operator which repos the configured PAT can see for `GITHUB_USER`, so t
 
 ## Behavior
 
-- Call GitHub REST with `GITHUB_TOKEN`.
+- Call authenticated GitHub REST `GET /user/repos` with `GITHUB_TOKEN` (includes **private** and org repos the token can access).
+- Paginate (`per_page=100`) until exhausted.
+- Use `GITHUB_API_URL` (github.com or GHES).
 - Cache results in memory for a few minutes (rate limits).
 - Map to `Repo { name, full_name, private, default_branch, clone_url }`.
 - Never echo the token.
 
 ## Acceptance
 
-- [ ] Returns repos for the configured user
+- [x] Returns private and public repos for the token
 - [ ] Second call within TTL does not hit GitHub
-- [ ] Failures surface as `502` with safe error message
+- [x] Failures surface as `502` with safe error message
+- [x] Does not use public-only `GET /users/{user}/repos`

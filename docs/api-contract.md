@@ -23,9 +23,11 @@ Liveness for orchestrators.
 
 ## `GET /api/repos`
 
-List repos visible to `GITHUB_TOKEN` for `GITHUB_USER`.
+List repos visible to `GITHUB_TOKEN` (authenticated `GET /user/repos`: private, public, and org membership).
 
 **Caching:** In-memory, short TTL (suggested 2–5 minutes) to respect GitHub rate limits.
+
+**Enterprise:** Set `GITHUB_API_URL` / `GITHUB_HOST` for GHES (see `PROJECT.md`).
 
 **Response `200`:**
 
@@ -77,11 +79,21 @@ List on-disk projects under `PROJECTS_DIR` with git + tmux status.
         }
       ],
       "tmux_window_exists": true,
-      "last_synced": "2026-08-02T10:05:00Z"
+      "last_synced": "2026-08-02T10:05:00Z",
+      "last_sync": {
+        "outcome": "ok",
+        "message": "synced",
+        "at": "2026-08-02T10:05:00Z",
+        "skipped_dirty": 0,
+        "skipped_diverged": 0
+      },
+      "visibility": "private"
     }
   ]
 }
 ```
+
+`last_synced` / `last_sync` come from in-memory sync outcomes in the current process (lost on restart). `visibility` is `public` / `private` when the repo is still visible via the GitHub list API.
 
 `last_synced` may be omitted or null if never recorded (v1 may derive from filesystem mtime or omit persistence — see [ADR-0008](conceptual/adr/ADR-0008-no-database.md)).
 
@@ -129,7 +141,7 @@ Idempotent sync. `{repo}` is the short repo name (directory name under `PROJECTS
 
 Suggested `action` values: `created` | `fast_forwarded` | `already_up_to_date` | `skipped_dirty` | `skipped_diverged`.
 
-**Errors:** `404` unknown GitHub repo; `502` git/GitHub failure; `409` optional if policy later forbids sync — not required in v1.
+**Errors:** `404` unknown GitHub repo; `502` git/GitHub failure (auth failures are classified — e.g. missing/invalid token for private repos — without echoing secrets); `409` optional if policy later forbids sync — not required in v1.
 
 ---
 
