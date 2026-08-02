@@ -2,9 +2,11 @@
 
 mod api;
 mod config;
+mod dashboard;
 mod error;
 mod git;
 mod github;
+mod projects;
 mod shell;
 mod tmux;
 
