@@ -159,10 +159,12 @@ Detailed status for one project.
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET` | `/` | Server-rendered project list (Askama) |
-| — | HTMX partials | Optional refresh of status rows |
+| `GET` | `/` | Shell + skeletons only (Askama); no GitHub wait |
+| `GET` | `/partials/projects` | Project rows (disk + git + tmux) |
+| `GET` | `/partials/repos` | GitHub repo list (`/user/repos`, short TTL cache) |
+| `POST` | `/partials/projects/{repo}/sync` | Sync + OOB flash; invalidates repo cache |
 
-Dashboard is not a SPA. See [design-system.md](design-system.md).
+`GET /` paints immediately. htmx loads `/partials/*` on `hx-trigger="load"`. Dashboard is not a SPA. See [design-system.md](design-system.md).
 
 ---
 

@@ -42,9 +42,10 @@ No hero marketing. No card grid for status — rows/tables are fine because they
 
 ## Motion
 
+- Skeleton shimmer on first paint until htmx fragments swap in
 - htmx swap fade (~150ms) on status refresh
 - Brief button busy state during sync
-- No decorative looping animations
+- No decorative looping animations beyond skeleton load
 
 ## Accessibility
 

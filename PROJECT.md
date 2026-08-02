@@ -92,7 +92,7 @@ See [docs/api-contract.md](docs/api-contract.md).
 - `GET /api/projects`
 - `POST /api/projects/{repo}/sync`
 - `GET /api/projects/{repo}/status`
-- `GET /` — Askama dashboard
+- `GET /` — Askama dashboard shell (skeletons); lists via `/partials/*`
 
 ## 9. Sync rules
 

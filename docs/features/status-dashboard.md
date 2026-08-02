@@ -11,7 +11,8 @@ Let the operator see on-disk / git / tmux state from a phone browser and trigger
 ## Behavior
 
 - Derive status by querying filesystem + `git` + `tmux` (no DB).
-- Dashboard: Askama + htmx; list projects and sync actions.
+- Dashboard: Askama + htmx; `GET /` returns shell + skeletons; lists load via `/partials/*` after paint.
+- GitHub `/user/repos` uses a short in-memory TTL cache; Sync invalidates it.
 - After container restart, disk status still correct even if tmux is gone.
 
 ## Acceptance
