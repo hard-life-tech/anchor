@@ -25,6 +25,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 tempfile = "3"
 askama = "0.16"
 askama_web = { version = "0.16", features = ["axum-0.8"] }
+base64 = "0.22"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }

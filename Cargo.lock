@@ -19,6 +19,7 @@ dependencies = [
  "askama",
  "askama_web",
  "axum",
+ "base64",
  "chrono",
  "reqwest",
  "serde",

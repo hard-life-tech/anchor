@@ -4,8 +4,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
+use base64::Engine;
 use serde::Serialize;
 
+use crate::error::{redact_secrets, redact_secrets_with_known};
 use crate::shell::{self, CmdOutput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -38,19 +40,101 @@ pub struct WorktreeStatus {
 
 const AGENTS: &[(&str, &str)] = &[("cursor", "agent/cursor"), ("opencode", "agent/opencode")];
 
-fn auth_env(token: &str) -> HashMap<String, String> {
-    // Scope credentials to this process only via extra header — never writes into worktree config.
-    let mut env = HashMap::new();
-    env.insert(
-        "GIT_CONFIG_COUNT".into(),
-        "1".into(),
-    );
-    env.insert("GIT_CONFIG_KEY_0".into(), "http.extraHeader".into());
-    env.insert(
-        "GIT_CONFIG_VALUE_0".into(),
-        format!("Authorization: Bearer {token}"),
-    );
-    env
+/// Process-local git HTTPS auth. Token stays in env values only — never in clone URL or argv.
+#[derive(Clone)]
+pub struct GitHttpsAuth {
+    token: String,
+}
+
+impl std::fmt::Debug for GitHttpsAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GitHttpsAuth")
+            .field("token", &"[redacted]")
+            .finish()
+    }
+}
+
+impl std::fmt::Display for GitHttpsAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("GitHttpsAuth([redacted])")
+    }
+}
+
+impl GitHttpsAuth {
+    pub fn new(token: impl Into<String>) -> Self {
+        Self {
+            token: token.into(),
+        }
+    }
+
+    /// `Authorization: Basic …` for GitHub HTTPS git (x-access-token).
+    pub fn basic_authorization_header(&self) -> String {
+        let credentials = format!("x-access-token:{}", self.token);
+        let encoded = base64::engine::general_purpose::STANDARD.encode(credentials.as_bytes());
+        format!("Authorization: Basic {encoded}")
+    }
+
+    /// Env for child `git`: header via `GIT_CONFIG_*` (not argv), no TTY prompt, no helper.
+    pub fn env(&self) -> HashMap<String, String> {
+        let mut env = HashMap::new();
+        // http.extraHeader + disable inherited credential.helper (avoids TTY username prompt).
+        env.insert("GIT_CONFIG_COUNT".into(), "2".into());
+        env.insert("GIT_CONFIG_KEY_0".into(), "http.extraHeader".into());
+        env.insert(
+            "GIT_CONFIG_VALUE_0".into(),
+            self.basic_authorization_header(),
+        );
+        env.insert("GIT_CONFIG_KEY_1".into(), "credential.helper".into());
+        env.insert("GIT_CONFIG_VALUE_1".into(), String::new());
+        env.insert("GIT_TERMINAL_PROMPT".into(), "0".into());
+        env
+    }
+
+    fn redact(&self, s: &str) -> String {
+        let mut out = redact_secrets_with_known(s, &self.token);
+        let header = self.basic_authorization_header();
+        if let Some(b64) = header.strip_prefix("Authorization: Basic ") {
+            out = out.replace(b64, "[redacted]");
+        }
+        out = out.replace(&header, "Authorization: Basic [redacted]");
+        out
+    }
+}
+
+fn is_auth_failure(stderr: &str) -> bool {
+    let lower = stderr.to_ascii_lowercase();
+    lower.contains("could not read username")
+        || lower.contains("authentication failed")
+        || lower.contains("invalid username or password")
+        || lower.contains("support for password authentication was removed")
+        || lower.contains("http basic: access denied")
+        || lower.contains("403")
+        || lower.contains("401 unauthorized")
+        || lower.contains("repository not found")
+}
+
+fn git_err(label: &str, out: &CmdOutput, auth: &GitHttpsAuth) -> anyhow::Error {
+    let stderr = auth.redact(out.stderr.trim());
+    if is_auth_failure(&stderr) {
+        anyhow!(
+            "{label} failed: GitHub authentication required or denied — \
+             check GITHUB_TOKEN scope/access for this private or enterprise repo"
+        )
+    } else {
+        anyhow!(
+            "{label} failed (exit {}): {}",
+            out.status,
+            redact_secrets(&stderr)
+        )
+    }
+}
+
+fn ensure_git(label: &str, out: &CmdOutput, auth: &GitHttpsAuth) -> Result<()> {
+    if out.success() {
+        Ok(())
+    } else {
+        Err(git_err(label, out, auth))
+    }
 }
 
 async fn ensure_origin_fetch_config(bare: &Path) -> Result<()> {
@@ -105,6 +189,8 @@ pub fn worktree_dir(projects_dir: &Path, repo: &str, agent: &str) -> PathBuf {
 }
 
 /// Sync a project: create or update bare + worktrees. Idempotent; never force-overwrite dirty trees.
+///
+/// `clone_url` must be a normal HTTPS/SSH URL **without** embedded credentials.
 pub async fn sync_project(
     projects_dir: &Path,
     repo: &str,
@@ -113,7 +199,8 @@ pub async fn sync_project(
     token: &str,
 ) -> Result<(bool, bool, Vec<WorktreeResult>)> {
     let bare = bare_dir(projects_dir, repo);
-    let env = auth_env(token);
+    let auth = GitHttpsAuth::new(token);
+    let env = auth.env();
     let mut created = false;
 
     if !bare.exists() {
@@ -126,7 +213,7 @@ pub async fn sync_project(
             &env,
         )
         .await?;
-        out.ensure_success("git clone --bare")?;
+        ensure_git("git clone --bare", &out, &auth)?;
         created = true;
     }
 
@@ -135,7 +222,7 @@ pub async fn sync_project(
     ensure_origin_fetch_config(&bare).await?;
     {
         let out = shell::run_git(&["fetch", "origin"], Some(&bare), &env).await?;
-        out.ensure_success("git fetch")?;
+        ensure_git("git fetch", &out, &auth)?;
     }
     let fetched = true;
 
@@ -358,6 +445,64 @@ async fn rev_parse(cwd: &Path, rev: &str) -> Result<String> {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn auth_debug_display_hide_token() {
+        let auth = GitHttpsAuth::new("ghp_SuperSecretToken99");
+        let dbg = format!("{auth:?}");
+        let disp = format!("{auth}");
+        assert!(!dbg.contains("SuperSecretToken99"));
+        assert!(!disp.contains("SuperSecretToken99"));
+        assert!(dbg.contains("[redacted]"));
+        assert!(!auth.basic_authorization_header().contains("SuperSecretToken99"));
+        // Header is Basic base64 — still must not appear in Debug/Display.
+        let b64 = auth
+            .basic_authorization_header()
+            .strip_prefix("Authorization: Basic ")
+            .unwrap()
+            .to_string();
+        assert!(!dbg.contains(&b64));
+        assert!(!disp.contains(&b64));
+    }
+
+    #[test]
+    fn auth_env_uses_basic_not_url_token() {
+        let auth = GitHttpsAuth::new("ghp_EnvSecretToken42");
+        let env = auth.env();
+        assert_eq!(env.get("GIT_TERMINAL_PROMPT").map(String::as_str), Some("0"));
+        assert_eq!(env.get("GIT_CONFIG_COUNT").map(String::as_str), Some("2"));
+        let header = env.get("GIT_CONFIG_VALUE_0").unwrap();
+        assert!(header.starts_with("Authorization: Basic "));
+        assert!(!header.contains("ghp_EnvSecretToken42"));
+        // credential.helper cleared so global `store` cannot force a TTY prompt.
+        assert_eq!(env.get("GIT_CONFIG_KEY_1").map(String::as_str), Some("credential.helper"));
+        assert_eq!(env.get("GIT_CONFIG_VALUE_1").map(String::as_str), Some(""));
+    }
+
+    #[test]
+    fn auth_failure_classifier() {
+        assert!(is_auth_failure(
+            "fatal: could not read Username for 'https://github.com': No such device or address"
+        ));
+        assert!(is_auth_failure("remote: Invalid username or password."));
+        assert!(!is_auth_failure("fatal: not a git repository"));
+    }
+
+    #[test]
+    fn auth_redacts_basic_blob_in_errors() {
+        let auth = GitHttpsAuth::new("opaque-token-value");
+        let header = auth.basic_authorization_header();
+        let b64 = header.strip_prefix("Authorization: Basic ").unwrap();
+        let out = CmdOutput {
+            status: 128,
+            stdout: String::new(),
+            stderr: format!("fatal: {header} rejected"),
+        };
+        let err = git_err("git clone --bare", &out, &auth).to_string();
+        assert!(!err.contains("opaque-token-value"));
+        assert!(!err.contains(b64));
+        assert!(err.contains("authentication") || err.contains("Authorization"));
+    }
 
     async fn git(args: &[&str], cwd: Option<&Path>) -> CmdOutput {
         shell::run_git(args, cwd, &HashMap::new()).await.unwrap()
