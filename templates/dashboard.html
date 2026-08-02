@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anchor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div class="wrap">
+    <header class="header">
+      <h1 class="brand">Anchor</h1>
+      <div class="health{% if !healthy %} down{% endif %}" title="GET /healthz">
+        <span class="dot" aria-hidden="true"></span>
+        <span>{% if healthy %}healthy{% else %}down{% endif %}</span>
+      </div>
+    </header>
+
+    <p class="lead" style="color:var(--muted);margin-top:-0.5rem;margin-bottom:1.5rem">
+      Projects under <span class="mono">{{ projects_dir }}</span>
+    </p>
+
+    <div id="flash"></div>
+
+    <section class="section" aria-labelledby="projects-heading">
+      <h2 id="projects-heading">Projects</h2>
+      <p class="lead">On-disk worktrees and tmux window status.</p>
+      <div class="toolbar">
+        <button
+          type="button"
+          class="primary"
+          hx-get="/partials/projects"
+          hx-target="#projects"
+          hx-swap="innerHTML swap:150ms"
+        >Refresh projects</button>
+      </div>
+      <div id="projects" class="fade">
+        {% include "partials/projects.html" %}
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="repos-heading">
+      <h2 id="repos-heading">GitHub repos</h2>
+      <p class="lead">Sync a repo to create bare clone, worktrees, and tmux panes.</p>
+      <div class="toolbar">
+        <button
+          type="button"
+          hx-get="/partials/repos"
+          hx-target="#repos"
+          hx-swap="innerHTML swap:150ms"
+        >Refresh repos</button>
+      </div>
+      <div id="repos" class="fade">
+        {% include "partials/repos.html" %}
+      </div>
+    </section>
+  </div>
+</body>
+</html>

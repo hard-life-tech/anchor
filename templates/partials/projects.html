@@ -1,0 +1,57 @@
+{% if projects.is_empty() %}
+  <p class="empty">No projects yet — sync a repo below.</p>
+{% else %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Project</th>
+        <th>Worktrees</th>
+        <th class="hide-sm">Tmux</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in projects %}
+      <tr>
+        <td>
+          <span class="mono">{{ p.name }}</span>
+        </td>
+        <td>
+          <div class="chips">
+            {% for wt in p.worktrees %}
+              <span class="chip {% if wt.dirty %}dirty{% elif wt.diverged %}diverged{% else %}ok{% endif %}">
+                <span class="mono">{{ wt.agent }}</span>
+                {% if wt.dirty %}<span>dirty</span>{% endif %}
+                {% if wt.diverged %}<span>diverged</span>{% endif %}
+                {% if wt.ahead > 0 || wt.behind > 0 %}
+                  <span class="meta">+{{ wt.ahead }}/−{{ wt.behind }}</span>
+                {% endif %}
+              </span>
+            {% endfor %}
+            {% if p.worktrees.is_empty() %}
+              <span class="chip meta">no worktrees</span>
+            {% endif %}
+          </div>
+        </td>
+        <td class="hide-sm">
+          {% if p.tmux_window_exists %}
+            <span class="chip ok">window</span>
+          {% else %}
+            <span class="chip meta">none</span>
+          {% endif %}
+        </td>
+        <td>
+          <button
+            type="button"
+            class="primary"
+            hx-post="/partials/projects/{{ p.name }}/sync"
+            hx-target="#projects"
+            hx-swap="innerHTML swap:150ms"
+            hx-indicator="this"
+          >Sync</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endif %}

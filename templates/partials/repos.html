@@ -1,0 +1,25 @@
+{% if repos.is_empty() %}
+  <p class="empty">No repos returned for {{ github_user }}.</p>
+{% else %}
+  <ul class="repo-list">
+    {% for r in repos %}
+    <li>
+      <div>
+        <div class="mono">{{ r.full_name }}</div>
+        <div class="repo-meta">
+          {{ r.default_branch }}{% if r.private %} · private{% else %} · public{% endif %}
+          {% if r.on_disk %} · on disk{% endif %}
+        </div>
+      </div>
+      <button
+        type="button"
+        class="primary"
+        hx-post="/partials/projects/{{ r.name }}/sync"
+        hx-target="#projects"
+        hx-swap="innerHTML swap:150ms"
+        hx-indicator="this"
+      >{% if r.on_disk %}Re-sync{% else %}Sync{% endif %}</button>
+    </li>
+    {% endfor %}
+  </ul>
+{% endif %}
