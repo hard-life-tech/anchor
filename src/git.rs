@@ -1,4 +1,13 @@
 //! Bare clone + worktree sync via shell-outs to `git`.
+//!
+//! Multi-repo sibling layout (ADR-0010):
+//! ```text
+//! $PROJECTS_DIR/<slug>/
+//!   .anchor/project.json
+//!   .bares/<owner>__<repo>/
+//!   cursor/<owner>__<repo>/
+//!   opencode/<owner>__<repo>/
+//! ```
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -39,6 +48,40 @@ pub struct WorktreeStatus {
 }
 
 const AGENTS: &[(&str, &str)] = &[("cursor", "agent/cursor"), ("opencode", "agent/opencode")];
+
+/// Owner-scoped filesystem key (avoids short-name collisions).
+pub fn repo_key(owner: &str, name: &str) -> String {
+    format!("{owner}__{name}")
+}
+
+pub fn project_dir(projects_dir: &Path, slug: &str) -> PathBuf {
+    projects_dir.join(slug)
+}
+
+pub fn agent_workspace(projects_dir: &Path, slug: &str, agent: &str) -> PathBuf {
+    project_dir(projects_dir, slug).join(agent)
+}
+
+pub fn bare_dir(projects_dir: &Path, slug: &str, owner: &str, name: &str) -> PathBuf {
+    project_dir(projects_dir, slug)
+        .join(".bares")
+        .join(repo_key(owner, name))
+}
+
+pub fn worktree_dir(
+    projects_dir: &Path,
+    slug: &str,
+    agent: &str,
+    owner: &str,
+    name: &str,
+) -> PathBuf {
+    agent_workspace(projects_dir, slug, agent).join(repo_key(owner, name))
+}
+
+/// Legacy 1:1 layout: `$PROJECTS_DIR/<name>/.bare` (not yet migrated).
+pub fn is_legacy_layout(dir: &Path) -> bool {
+    dir.join(".bare").is_dir() && !dir.join(".bares").is_dir() && !dir.join(".anchor").join("project.json").is_file()
+}
 
 /// Process-local git HTTPS auth. Token stays in env values only — never in clone URL or argv.
 #[derive(Clone)]
@@ -176,37 +219,34 @@ async fn ensure_origin_ref(bare: &Path, default_branch: &str, origin_ref: &str) 
     Ok(())
 }
 
-pub fn project_dir(projects_dir: &Path, repo: &str) -> PathBuf {
-    projects_dir.join(repo)
-}
-
-pub fn bare_dir(projects_dir: &Path, repo: &str) -> PathBuf {
-    project_dir(projects_dir, repo).join(".bare")
-}
-
-pub fn worktree_dir(projects_dir: &Path, repo: &str, agent: &str) -> PathBuf {
-    project_dir(projects_dir, repo).join(agent)
-}
-
-/// Sync a project: create or update bare + worktrees. Idempotent; never force-overwrite dirty trees.
+/// Sync one member repo into a project. Idempotent; never force-overwrite dirty trees.
 ///
 /// `clone_url` must be a normal HTTPS/SSH URL **without** embedded credentials.
-pub async fn sync_project(
+pub async fn sync_member(
     projects_dir: &Path,
-    repo: &str,
+    slug: &str,
+    owner: &str,
+    name: &str,
     clone_url: &str,
     default_branch: &str,
     token: &str,
 ) -> Result<(bool, bool, Vec<WorktreeResult>)> {
-    let bare = bare_dir(projects_dir, repo);
+    let bare = bare_dir(projects_dir, slug, owner, name);
     let auth = GitHttpsAuth::new(token);
     let env = auth.env();
     let mut created = false;
 
-    if !bare.exists() {
-        tokio::fs::create_dir_all(project_dir(projects_dir, repo))
+    let proj = project_dir(projects_dir, slug);
+    tokio::fs::create_dir_all(proj.join(".bares"))
+        .await
+        .context("create .bares")?;
+    for (agent, _) in AGENTS {
+        tokio::fs::create_dir_all(agent_workspace(projects_dir, slug, agent))
             .await
-            .context("create project dir")?;
+            .with_context(|| format!("create {agent} workspace"))?;
+    }
+
+    if !bare.exists() {
         let out = shell::run_git(
             &["clone", "--bare", clone_url, &bare.to_string_lossy()],
             None,
@@ -226,23 +266,20 @@ pub async fn sync_project(
     }
     let fetched = true;
 
-    // Ensure origin/<default> is visible for branch creation.
     let origin_ref = format!("origin/{default_branch}");
     ensure_origin_ref(&bare, default_branch, &origin_ref).await?;
     let mut results = Vec::new();
 
     for (agent, branch) in AGENTS {
-        let wt = worktree_dir(projects_dir, repo, agent);
+        let wt = worktree_dir(projects_dir, slug, agent, owner, name);
         if !wt.exists() {
-            // Create branch from origin/default if needed, then add worktree.
-            let _ = shell::run_git(
-                &["rev-parse", "--verify", branch],
-                Some(&bare),
-                &HashMap::new(),
-            )
-            .await?;
             let exists = shell::run_git(
-                &["show-ref", "--verify", "--quiet", &format!("refs/heads/{branch}")],
+                &[
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    &format!("refs/heads/{branch}"),
+                ],
                 Some(&bare),
                 &HashMap::new(),
             )
@@ -260,12 +297,7 @@ pub async fn sync_project(
             }
 
             let out = shell::run_git(
-                &[
-                    "worktree",
-                    "add",
-                    &wt.to_string_lossy(),
-                    branch,
-                ],
+                &["worktree", "add", &wt.to_string_lossy(), branch],
                 Some(&bare),
                 &HashMap::new(),
             )
@@ -301,10 +333,10 @@ pub async fn sync_project(
         }
 
         let before = rev_parse(&wt, "HEAD").await?;
-        let out = shell::run_git(&["merge", "--ff-only", &origin_ref], Some(&wt), &HashMap::new())
-            .await?;
+        let out =
+            shell::run_git(&["merge", "--ff-only", &origin_ref], Some(&wt), &HashMap::new())
+                .await?;
         if !out.success() {
-            // Treat ff failure as diverged skip (should be rare after checks).
             results.push(WorktreeResult {
                 agent: (*agent).into(),
                 action: WorktreeAction::SkippedDiverged,
@@ -330,7 +362,112 @@ pub async fn sync_project(
     Ok((created, fetched, results))
 }
 
-pub async fn list_on_disk_projects(projects_dir: &Path) -> Result<Vec<String>> {
+/// Migrate legacy `$PROJECTS_DIR/<shortname>/{.bare,cursor,opencode}` into sibling layout.
+///
+/// Returns `true` if a migration was performed.
+pub async fn migrate_legacy_project(
+    projects_dir: &Path,
+    shortname: &str,
+    owner: &str,
+) -> Result<bool> {
+    let dir = project_dir(projects_dir, shortname);
+    if !is_legacy_layout(&dir) {
+        return Ok(false);
+    }
+
+    let key = repo_key(owner, shortname);
+    let old_bare = dir.join(".bare");
+    let bares = dir.join(".bares");
+    let new_bare = bares.join(&key);
+
+    tokio::fs::create_dir_all(&bares)
+        .await
+        .context("create .bares for migration")?;
+
+    // Relocate worktrees out from under agent roots before nesting.
+    for agent in ["cursor", "opencode"] {
+        let old_wt = dir.join(agent);
+        if !old_wt.is_dir() {
+            continue;
+        }
+        // If already nested (owner__repo), skip.
+        if old_wt.join(&key).exists() {
+            continue;
+        }
+        // Detect legacy worktree: contains .git file (linked worktree).
+        let gitlink = old_wt.join(".git");
+        if !gitlink.exists() {
+            continue;
+        }
+
+        let staging = dir.join(format!(".__migrate_{agent}"));
+        if staging.exists() {
+            tokio::fs::remove_dir_all(&staging).await.ok();
+        }
+        tokio::fs::rename(&old_wt, &staging)
+            .await
+            .with_context(|| format!("stage {agent} worktree"))?;
+        tokio::fs::create_dir_all(&old_wt)
+            .await
+            .with_context(|| format!("recreate {agent}/"))?;
+        let dest = old_wt.join(&key);
+        tokio::fs::rename(&staging, &dest)
+            .await
+            .with_context(|| format!("nest {agent} worktree under {key}"))?;
+    }
+
+    // Move bare clone.
+    if old_bare.exists() && !new_bare.exists() {
+        tokio::fs::rename(&old_bare, &new_bare)
+            .await
+            .context("move .bare into .bares")?;
+    }
+
+    // Repair worktree ↔ bare links after the moves.
+    let mut repair_args = vec!["worktree".to_string(), "repair".to_string()];
+    for agent in ["cursor", "opencode"] {
+        let wt = dir.join(agent).join(&key);
+        if wt.exists() {
+            repair_args.push(wt.to_string_lossy().into_owned());
+        }
+    }
+    if repair_args.len() > 2 {
+        let args: Vec<&str> = repair_args.iter().map(String::as_str).collect();
+        let out = shell::run_git(&args, Some(&new_bare), &HashMap::new()).await?;
+        // Best-effort — older git may lack repair; still usable if paths were absolute-correct.
+        if !out.success() {
+            tracing::warn!(
+                slug = shortname,
+                "git worktree repair after migration: {}",
+                redact_secrets(out.stderr.trim())
+            );
+        }
+    }
+
+    Ok(true)
+}
+
+/// Scan `PROJECTS_DIR` for legacy layouts and migrate them.
+pub async fn migrate_all_legacy(projects_dir: &Path, default_owner: &str) -> Result<Vec<String>> {
+    let mut migrated = Vec::new();
+    if !projects_dir.exists() {
+        return Ok(migrated);
+    }
+    let mut entries = tokio::fs::read_dir(projects_dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        if !entry.file_type().await?.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if migrate_legacy_project(projects_dir, &name, default_owner).await? {
+            migrated.push(name);
+        }
+    }
+    migrated.sort();
+    Ok(migrated)
+}
+
+pub async fn list_on_disk_slugs(projects_dir: &Path) -> Result<Vec<String>> {
     let mut names = Vec::new();
     if !projects_dir.exists() {
         return Ok(names);
@@ -341,7 +478,11 @@ pub async fn list_on_disk_projects(projects_dir: &Path) -> Result<Vec<String>> {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        if bare_dir(projects_dir, &name).exists() {
+        let dir = entry.path();
+        let has_meta = dir.join(".anchor").join("project.json").is_file();
+        let has_bares = dir.join(".bares").is_dir();
+        let legacy = is_legacy_layout(&dir);
+        if has_meta || has_bares || legacy {
             names.push(name);
         }
     }
@@ -349,15 +490,17 @@ pub async fn list_on_disk_projects(projects_dir: &Path) -> Result<Vec<String>> {
     Ok(names)
 }
 
-pub async fn project_worktree_statuses(
+pub async fn member_worktree_statuses(
     projects_dir: &Path,
-    repo: &str,
+    slug: &str,
+    owner: &str,
+    name: &str,
     default_branch: &str,
 ) -> Result<Vec<WorktreeStatus>> {
     let origin_ref = format!("origin/{default_branch}");
     let mut out = Vec::new();
     for (agent, branch) in AGENTS {
-        let wt = worktree_dir(projects_dir, repo, agent);
+        let wt = worktree_dir(projects_dir, slug, agent, owner, name);
         if !wt.exists() {
             continue;
         }
@@ -374,6 +517,46 @@ pub async fn project_worktree_statuses(
     Ok(out)
 }
 
+/// Remove member bare + worktrees when clean. Returns Err if dirty (do not force).
+pub async fn remove_member_disk(
+    projects_dir: &Path,
+    slug: &str,
+    owner: &str,
+    name: &str,
+    default_branch: &str,
+) -> Result<()> {
+    let statuses =
+        member_worktree_statuses(projects_dir, slug, owner, name, default_branch).await?;
+    if statuses.iter().any(|s| s.dirty) {
+        return Err(anyhow!(
+            "cannot remove {owner}/{name}: dirty worktree(s) present"
+        ));
+    }
+
+    let bare = bare_dir(projects_dir, slug, owner, name);
+    for (agent, _) in AGENTS {
+        let wt = worktree_dir(projects_dir, slug, agent, owner, name);
+        if wt.exists() && bare.exists() {
+            let out = shell::run_git(
+                &["worktree", "remove", "--force", &wt.to_string_lossy()],
+                Some(&bare),
+                &HashMap::new(),
+            )
+            .await?;
+            if !out.success() {
+                // Fall back to plain remove if worktree unregister fails.
+                tokio::fs::remove_dir_all(&wt).await.ok();
+            }
+        } else if wt.exists() {
+            tokio::fs::remove_dir_all(&wt).await?;
+        }
+    }
+    if bare.exists() {
+        tokio::fs::remove_dir_all(&bare).await?;
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 struct WtCheck {
     dirty: bool,
@@ -385,7 +568,6 @@ struct WtCheck {
 async fn worktree_status_in(wt: &Path, origin_ref: &str) -> Result<WtCheck> {
     let dirty = is_dirty(wt).await?;
     let (ahead, behind) = ahead_behind(wt, origin_ref).await.unwrap_or((0, 0));
-    // Diverged: both ahead and behind relative to origin/default.
     let diverged = ahead > 0 && behind > 0;
     Ok(WtCheck {
         dirty,
@@ -402,7 +584,6 @@ async fn is_dirty(wt: &Path) -> Result<bool> {
 }
 
 async fn ahead_behind(wt: &Path, upstream: &str) -> Result<(u32, u32)> {
-    // Ensure upstream exists.
     let verify = shell::run_git(
         &["rev-parse", "--verify", upstream],
         Some(wt),
@@ -413,7 +594,12 @@ async fn ahead_behind(wt: &Path, upstream: &str) -> Result<(u32, u32)> {
         return Ok((0, 0));
     }
     let out = shell::run_git(
-        &["rev-list", "--left-right", "--count", &format!("HEAD...{upstream}")],
+        &[
+            "rev-list",
+            "--left-right",
+            "--count",
+            &format!("HEAD...{upstream}"),
+        ],
         Some(wt),
         &HashMap::new(),
     )
@@ -447,6 +633,19 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    fn repo_key_owner_scoped() {
+        assert_eq!(repo_key("alice", "anchor"), "alice__anchor");
+        assert_eq!(
+            bare_dir(Path::new("/p"), "plat", "alice", "anchor"),
+            PathBuf::from("/p/plat/.bares/alice__anchor")
+        );
+        assert_eq!(
+            worktree_dir(Path::new("/p"), "plat", "cursor", "alice", "anchor"),
+            PathBuf::from("/p/plat/cursor/alice__anchor")
+        );
+    }
+
+    #[test]
     fn auth_debug_display_hide_token() {
         let auth = GitHttpsAuth::new("ghp_SuperSecretToken99");
         let dbg = format!("{auth:?}");
@@ -454,8 +653,9 @@ mod tests {
         assert!(!dbg.contains("SuperSecretToken99"));
         assert!(!disp.contains("SuperSecretToken99"));
         assert!(dbg.contains("[redacted]"));
-        assert!(!auth.basic_authorization_header().contains("SuperSecretToken99"));
-        // Header is Basic base64 — still must not appear in Debug/Display.
+        assert!(!auth
+            .basic_authorization_header()
+            .contains("SuperSecretToken99"));
         let b64 = auth
             .basic_authorization_header()
             .strip_prefix("Authorization: Basic ")
@@ -469,13 +669,18 @@ mod tests {
     fn auth_env_uses_basic_not_url_token() {
         let auth = GitHttpsAuth::new("ghp_EnvSecretToken42");
         let env = auth.env();
-        assert_eq!(env.get("GIT_TERMINAL_PROMPT").map(String::as_str), Some("0"));
+        assert_eq!(
+            env.get("GIT_TERMINAL_PROMPT").map(String::as_str),
+            Some("0")
+        );
         assert_eq!(env.get("GIT_CONFIG_COUNT").map(String::as_str), Some("2"));
         let header = env.get("GIT_CONFIG_VALUE_0").unwrap();
         assert!(header.starts_with("Authorization: Basic "));
         assert!(!header.contains("ghp_EnvSecretToken42"));
-        // credential.helper cleared so global `store` cannot force a TTY prompt.
-        assert_eq!(env.get("GIT_CONFIG_KEY_1").map(String::as_str), Some("credential.helper"));
+        assert_eq!(
+            env.get("GIT_CONFIG_KEY_1").map(String::as_str),
+            Some("credential.helper")
+        );
         assert_eq!(env.get("GIT_CONFIG_VALUE_1").map(String::as_str), Some(""));
     }
 
@@ -510,7 +715,10 @@ mod tests {
 
     async fn init_upstream(dir: &Path) -> String {
         tokio::fs::create_dir_all(dir).await.unwrap();
-        git(&["init", "-b", "main"], Some(dir)).await.ensure_success("init").unwrap();
+        git(&["init", "-b", "main"], Some(dir))
+            .await
+            .ensure_success("init")
+            .unwrap();
         git(&["config", "user.email", "test@example.com"], Some(dir))
             .await
             .ensure_success("email")
@@ -529,12 +737,19 @@ mod tests {
             .await
             .ensure_success("commit")
             .unwrap();
-        // bare remote
         let bare = dir.parent().unwrap().join("upstream.git");
-        git(&["clone", "--bare", &dir.to_string_lossy(), &bare.to_string_lossy()], None)
-            .await
-            .ensure_success("bare")
-            .unwrap();
+        git(
+            &[
+                "clone",
+                "--bare",
+                &dir.to_string_lossy(),
+                &bare.to_string_lossy(),
+            ],
+            None,
+        )
+        .await
+        .ensure_success("bare")
+        .unwrap();
         bare.to_string_lossy().into_owned()
     }
 
@@ -545,18 +760,35 @@ mod tests {
         let remote = init_upstream(&src).await;
         let projects = tmp.path().join("projects");
 
-        let (created, _fetched, results) =
-            sync_project(&projects, "demo", &remote, "main", "unused").await.unwrap();
+        let (created, _fetched, results) = sync_member(
+            &projects,
+            "platform",
+            "alice",
+            "demo",
+            &remote,
+            "main",
+            "unused",
+        )
+        .await
+        .unwrap();
         assert!(created);
-        assert!(bare_dir(&projects, "demo").exists());
-        assert!(worktree_dir(&projects, "demo", "cursor").exists());
-        assert!(worktree_dir(&projects, "demo", "opencode").exists());
+        assert!(bare_dir(&projects, "platform", "alice", "demo").exists());
+        assert!(worktree_dir(&projects, "platform", "cursor", "alice", "demo").exists());
+        assert!(worktree_dir(&projects, "platform", "opencode", "alice", "demo").exists());
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|r| r.action == WorktreeAction::Created));
 
-        // Idempotent re-sync
-        let (created2, fetched2, results2) =
-            sync_project(&projects, "demo", &remote, "main", "unused").await.unwrap();
+        let (created2, fetched2, results2) = sync_member(
+            &projects,
+            "platform",
+            "alice",
+            "demo",
+            &remote,
+            "main",
+            "unused",
+        )
+        .await
+        .unwrap();
         assert!(!created2);
         assert!(fetched2);
         assert!(results2
@@ -564,34 +796,157 @@ mod tests {
             .all(|r| r.action == WorktreeAction::AlreadyUpToDate));
     }
 
-    /// Restart simulation: disk inventory must not depend on tmux/process state.
     #[tokio::test]
-    async fn list_on_disk_projects_survives_without_tmux() {
+    async fn sync_two_members_under_one_slug() {
         let tmp = TempDir::new().unwrap();
         let src = tmp.path().join("src");
         let remote = init_upstream(&src).await;
         let projects = tmp.path().join("projects");
 
-        sync_project(&projects, "demo", &remote, "main", "unused")
-            .await
-            .unwrap();
-        sync_project(&projects, "other", &remote, "main", "unused")
-            .await
-            .unwrap();
+        sync_member(
+            &projects,
+            "platform",
+            "alice",
+            "demo",
+            &remote,
+            "main",
+            "unused",
+        )
+        .await
+        .unwrap();
+        sync_member(
+            &projects,
+            "platform",
+            "alice",
+            "other",
+            &remote,
+            "main",
+            "unused",
+        )
+        .await
+        .unwrap();
 
-        // Drop a junk dir without .bare — must be ignored.
+        assert!(worktree_dir(&projects, "platform", "cursor", "alice", "demo").exists());
+        assert!(worktree_dir(&projects, "platform", "cursor", "alice", "other").exists());
+        assert_eq!(
+            agent_workspace(&projects, "platform", "cursor"),
+            projects.join("platform/cursor")
+        );
+    }
+
+    #[tokio::test]
+    async fn list_on_disk_after_sync() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        let remote = init_upstream(&src).await;
+        let projects = tmp.path().join("projects");
+
+        sync_member(
+            &projects,
+            "demo",
+            "alice",
+            "demo",
+            &remote,
+            "main",
+            "unused",
+        )
+        .await
+        .unwrap();
+        // Write a minimal project.json so inventory treats it as a project.
+        tokio::fs::create_dir_all(projects.join("demo/.anchor"))
+            .await
+            .unwrap();
+        tokio::fs::write(
+            projects.join("demo/.anchor/project.json"),
+            r#"{"id":"1","slug":"demo","name":"Demo","members":[]}"#,
+        )
+        .await
+        .unwrap();
+
         tokio::fs::create_dir_all(projects.join("not-a-project"))
             .await
             .unwrap();
 
-        let names = list_on_disk_projects(&projects).await.unwrap();
-        assert_eq!(names, vec!["demo".to_string(), "other".to_string()]);
+        let names = list_on_disk_slugs(&projects).await.unwrap();
+        assert_eq!(names, vec!["demo".to_string()]);
+    }
 
-        let statuses = project_worktree_statuses(&projects, "demo", "main")
+    #[tokio::test]
+    async fn migrate_legacy_layout() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        let remote = init_upstream(&src).await;
+        let projects = tmp.path().join("projects");
+
+        // Build legacy layout manually (old sync shape).
+        let legacy = projects.join("demo");
+        tokio::fs::create_dir_all(&legacy).await.unwrap();
+        let bare = legacy.join(".bare");
+        git(
+            &[
+                "clone",
+                "--bare",
+                &remote,
+                &bare.to_string_lossy(),
+            ],
+            None,
+        )
+        .await
+        .ensure_success("legacy bare")
+        .unwrap();
+        ensure_origin_fetch_config(&bare).await.unwrap();
+        git(&["fetch", "origin"], Some(&bare))
+            .await
+            .ensure_success("fetch")
+            .unwrap();
+        ensure_origin_ref(&bare, "main", "origin/main")
             .await
             .unwrap();
-        assert_eq!(statuses.len(), 2);
-        assert!(statuses.iter().all(|s| !s.dirty));
+        git(&["branch", "agent/cursor", "origin/main"], Some(&bare))
+            .await
+            .ensure_success("branch cursor")
+            .unwrap();
+        git(&["branch", "agent/opencode", "origin/main"], Some(&bare))
+            .await
+            .ensure_success("branch opencode")
+            .unwrap();
+        git(
+            &[
+                "worktree",
+                "add",
+                &legacy.join("cursor").to_string_lossy(),
+                "agent/cursor",
+            ],
+            Some(&bare),
+        )
+        .await
+        .ensure_success("wt cursor")
+        .unwrap();
+        git(
+            &[
+                "worktree",
+                "add",
+                &legacy.join("opencode").to_string_lossy(),
+                "agent/opencode",
+            ],
+            Some(&bare),
+        )
+        .await
+        .ensure_success("wt opencode")
+        .unwrap();
+
+        assert!(is_legacy_layout(&legacy));
+        assert!(migrate_legacy_project(&projects, "demo", "alice")
+            .await
+            .unwrap());
+        assert!(!is_legacy_layout(&legacy));
+        assert!(bare_dir(&projects, "demo", "alice", "demo").exists());
+        assert!(worktree_dir(&projects, "demo", "cursor", "alice", "demo").exists());
+        assert!(worktree_dir(&projects, "demo", "opencode", "alice", "demo").exists());
+        // Idempotent.
+        assert!(!migrate_legacy_project(&projects, "demo", "alice")
+            .await
+            .unwrap());
     }
 
     #[tokio::test]
@@ -601,19 +956,37 @@ mod tests {
         let remote = init_upstream(&src).await;
         let projects = tmp.path().join("projects");
 
-        sync_project(&projects, "demo", &remote, "main", "unused")
+        sync_member(
+            &projects,
+            "demo",
+            "alice",
+            "demo",
+            &remote,
+            "main",
+            "unused",
+        )
+        .await
+        .unwrap();
+
+        let cursor = worktree_dir(&projects, "demo", "cursor", "alice", "demo");
+        tokio::fs::write(cursor.join("dirty.txt"), "nope")
             .await
             .unwrap();
 
-        let cursor = worktree_dir(&projects, "demo", "cursor");
-        tokio::fs::write(cursor.join("dirty.txt"), "nope").await.unwrap();
-
-        let (_c, _f, results) =
-            sync_project(&projects, "demo", &remote, "main", "unused").await.unwrap();
+        let (_c, _f, results) = sync_member(
+            &projects,
+            "demo",
+            "alice",
+            "demo",
+            &remote,
+            "main",
+            "unused",
+        )
+        .await
+        .unwrap();
         let cursor_r = results.iter().find(|r| r.agent == "cursor").unwrap();
         assert_eq!(cursor_r.action, WorktreeAction::SkippedDirty);
         assert!(cursor_r.dirty);
-        // dirty file still there
         assert!(cursor.join("dirty.txt").exists());
     }
 
@@ -624,11 +997,19 @@ mod tests {
         let remote = init_upstream(&src).await;
         let projects = tmp.path().join("projects");
 
-        sync_project(&projects, "demo", &remote, "main", "unused")
-            .await
-            .unwrap();
+        sync_member(
+            &projects,
+            "demo",
+            "alice",
+            "demo",
+            &remote,
+            "main",
+            "unused",
+        )
+        .await
+        .unwrap();
 
-        let cursor = worktree_dir(&projects, "demo", "cursor");
+        let cursor = worktree_dir(&projects, "demo", "cursor", "alice", "demo");
         git(&["config", "user.email", "test@example.com"], Some(&cursor))
             .await
             .ensure_success("email")
@@ -637,7 +1018,9 @@ mod tests {
             .await
             .ensure_success("name")
             .unwrap();
-        tokio::fs::write(cursor.join("local.txt"), "mine\n").await.unwrap();
+        tokio::fs::write(cursor.join("local.txt"), "mine\n")
+            .await
+            .unwrap();
         git(&["add", "local.txt"], Some(&cursor))
             .await
             .ensure_success("add local")
@@ -647,7 +1030,6 @@ mod tests {
             .ensure_success("commit local")
             .unwrap();
 
-        // Advance upstream so cursor is both ahead and behind.
         let work = tmp.path().join("upstream-work");
         git(&["clone", &remote, &work.to_string_lossy()], None)
             .await
@@ -675,8 +1057,17 @@ mod tests {
             .ensure_success("push")
             .unwrap();
 
-        let (_c, _f, results) =
-            sync_project(&projects, "demo", &remote, "main", "unused").await.unwrap();
+        let (_c, _f, results) = sync_member(
+            &projects,
+            "demo",
+            "alice",
+            "demo",
+            &remote,
+            "main",
+            "unused",
+        )
+        .await
+        .unwrap();
         let cursor_r = results.iter().find(|r| r.agent == "cursor").unwrap();
         assert_eq!(cursor_r.action, WorktreeAction::SkippedDiverged);
         assert!(cursor_r.diverged);

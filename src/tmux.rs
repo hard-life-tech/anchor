@@ -16,6 +16,9 @@ pub struct TmuxEnsureResult {
 /// Ensure session + window exist. Launch agent cmds only into empty panes.
 /// `GITHUB_TOKEN` is stripped from tmux invocations (see `shell::run_tmux`)
 /// and unset on the session so panes never inherit it.
+///
+/// `legacy_window_names`: optional old window names to rename → `window` (idempotent;
+/// never kills panes).
 pub async fn ensure_project_window(
     session: &str,
     window: &str,
@@ -24,10 +27,30 @@ pub async fn ensure_project_window(
     cursor_cmd: &str,
     opencode_cmd: &str,
 ) -> Result<TmuxEnsureResult> {
+    ensure_project_window_renaming(
+        session,
+        window,
+        cursor_cwd,
+        opencode_cwd,
+        cursor_cmd,
+        opencode_cmd,
+        &[],
+    )
+    .await
+}
+
+pub async fn ensure_project_window_renaming(
+    session: &str,
+    window: &str,
+    cursor_cwd: &str,
+    opencode_cwd: &str,
+    cursor_cmd: &str,
+    opencode_cmd: &str,
+    legacy_window_names: &[&str],
+) -> Result<TmuxEnsureResult> {
     let mut created_window = false;
 
     if !session_exists(session).await? {
-        // new-session creates the first window; rename it to the repo name.
         let out = shell::run_tmux(&[
             "new-session",
             "-d",
@@ -42,18 +65,37 @@ pub async fn ensure_project_window(
         out.ensure_success("tmux new-session")?;
         created_window = true;
     } else if !window_exists(session, window).await? {
-        let out = shell::run_tmux(&[
-            "new-window",
-            "-t",
-            session,
-            "-n",
-            window,
-            "-c",
-            cursor_cwd,
-        ])
-        .await?;
-        out.ensure_success("tmux new-window")?;
-        created_window = true;
+        // Prefer renaming a legacy window over creating a duplicate.
+        let mut renamed = false;
+        for old in legacy_window_names {
+            if *old != window && window_exists(session, old).await? {
+                let out = shell::run_tmux(&[
+                    "rename-window",
+                    "-t",
+                    &format!("{session}:{old}"),
+                    window,
+                ])
+                .await?;
+                if out.success() {
+                    renamed = true;
+                    break;
+                }
+            }
+        }
+        if !renamed {
+            let out = shell::run_tmux(&[
+                "new-window",
+                "-t",
+                session,
+                "-n",
+                window,
+                "-c",
+                cursor_cwd,
+            ])
+            .await?;
+            out.ensure_success("tmux new-window")?;
+            created_window = true;
+        }
     }
 
     // Always scrub — session may have been created by an older Anchor or by hand.
@@ -62,7 +104,6 @@ pub async fn ensure_project_window(
     let target = format!("{session}:{window}");
     ensure_two_panes(&target, cursor_cwd, opencode_cwd).await?;
 
-    // Launch agents only if pane appears idle (single shell, no child).
     maybe_launch_pane(&target, "0", cursor_cwd, cursor_cmd).await?;
     maybe_launch_pane(&target, "1", opencode_cwd, opencode_cmd).await?;
 

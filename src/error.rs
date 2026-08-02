@@ -186,7 +186,6 @@ pub enum AppError {
     #[error("{0}")]
     BadGateway(String),
     #[error("{0}")]
-    #[allow(dead_code)]
     Conflict(String),
     #[error(transparent)]
     Other(#[from] anyhow::Error),

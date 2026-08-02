@@ -16,14 +16,14 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 
 use crate::error::AppError;
-use crate::git;
+use crate::project_store;
 use crate::tmux;
 use crate::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/projects/{repo}/terminal", get(terminal_page))
-        .route("/ws/terminal/{repo}/{agent}", get(ws_upgrade))
+        .route("/projects/{slug}/terminal", get(terminal_page))
+        .route("/ws/terminal/{slug}/{agent}", get(ws_upgrade))
 }
 
 #[derive(Template, WebTemplate)]
@@ -51,14 +51,22 @@ fn default_agent() -> String {
 
 async fn terminal_page(
     State(state): State<AppState>,
-    Path(repo): Path<String>,
+    Path(slug): Path<String>,
     Query(q): Query<TerminalQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     let agent = normalize_agent(&q.agent)?;
-    let bare = git::bare_dir(&state.config.projects_dir, &repo);
-    let on_disk = bare.exists();
+    let on_disk = project_store::ensure_db_has_project(
+        &state.db,
+        &state.config.projects_dir,
+        &slug,
+    )
+    .await
+    .map_err(AppError::Other)?
+    .is_some()
+        || state.config.projects_dir.join(&slug).exists();
+
     let window_exists = if on_disk {
-        tmux::window_exists(&state.config.tmux_session, &repo)
+        tmux::window_exists(&state.config.tmux_session, &slug)
             .await
             .unwrap_or(false)
     } else {
@@ -66,13 +74,13 @@ async fn terminal_page(
     };
 
     if on_disk {
-        let _ = state.db.set("last_opened_project", &repo);
+        let _ = state.db.set("last_opened_project", &slug);
     }
 
     Ok(TerminalTemplate {
-        repo_js: serde_json::to_string(&repo).unwrap_or_else(|_| "\"\"".into()),
+        repo_js: serde_json::to_string(&slug).unwrap_or_else(|_| "\"\"".into()),
         agent_js: serde_json::to_string(&agent).unwrap_or_else(|_| "\"\"".into()),
-        repo,
+        repo: slug,
         agent: agent.to_string(),
         session: state.config.tmux_session.clone(),
         window_exists,
@@ -83,28 +91,39 @@ async fn terminal_page(
 
 async fn ws_upgrade(
     State(state): State<AppState>,
-    Path((repo, agent)): Path<(String, String)>,
+    Path((slug, agent)): Path<(String, String)>,
     ws: WebSocketUpgrade,
 ) -> Result<Response, AppError> {
     let agent = normalize_agent(&agent)?.to_string();
-    let bare = git::bare_dir(&state.config.projects_dir, &repo);
-    if !bare.exists() {
-        return Err(AppError::NotFound(format!("project not on disk: {repo}")));
+    let known = project_store::ensure_db_has_project(
+        &state.db,
+        &state.config.projects_dir,
+        &slug,
+    )
+    .await
+    .map_err(AppError::Other)?
+    .is_some()
+        || state.config.projects_dir.join(&slug).exists();
+    if !known {
+        return Err(AppError::NotFound(format!("project not found: {slug}")));
     }
-    if !tmux::window_exists(&state.config.tmux_session, &repo)
+    if !tmux::window_exists(&state.config.tmux_session, &slug)
         .await
         .unwrap_or(false)
     {
         return Err(AppError::NotFound(format!(
-            "tmux window missing for {repo} — sync the project first"
+            "tmux window missing for {slug} — sync the project first"
         )));
     }
 
     let pane = pane_index(&agent);
     let session = state.config.tmux_session.clone();
     Ok(ws.on_upgrade(move |socket| async move {
-        if let Err(e) = handle_socket(socket, session, repo, pane).await {
-            tracing::warn!("terminal ws closed: {}", crate::error::redact_secrets(&e.to_string()));
+        if let Err(e) = handle_socket(socket, session, slug, pane).await {
+            tracing::warn!(
+                "terminal ws closed: {}",
+                crate::error::redact_secrets(&e.to_string())
+            );
         }
     }))
 }
@@ -131,7 +150,6 @@ async fn handle_socket(
     window: String,
     pane: &'static str,
 ) -> anyhow::Result<()> {
-    // Focus + zoom the target pane so attach shows one agent TUI.
     tmux::ensure_pane_zoomed(&session, &window, pane).await?;
 
     let target = format!("{session}:{window}");
@@ -147,7 +165,6 @@ async fn handle_socket(
     cmd.arg("attach-session");
     cmd.arg("-t");
     cmd.arg(&target);
-    // Never leak GitHub token into the PTY child.
     cmd.env_remove("GITHUB_TOKEN");
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
@@ -162,7 +179,6 @@ async fn handle_socket(
     let (mut ws_tx, mut ws_rx) = socket.split();
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
 
-    // PTY → channel (blocking thread)
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
@@ -178,7 +194,6 @@ async fn handle_socket(
         }
     });
 
-    // channel → websocket
     let writer_task = tokio::spawn(async move {
         while let Some(data) = out_rx.recv().await {
             if ws_tx.send(Message::Binary(data.into())).await.is_err() {
@@ -187,7 +202,6 @@ async fn handle_socket(
         }
     });
 
-    // websocket → PTY (+ resize)
     while let Some(msg) = ws_rx.next().await {
         let msg = match msg {
             Ok(m) => m,

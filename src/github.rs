@@ -156,9 +156,31 @@ impl GitHubClient {
         resp.json().await.context("decode repos")
     }
 
-    pub async fn find_repo(&self, name: &str) -> Result<Option<Repo>> {
+    pub async fn find_repo(&self, name_or_full: &str) -> Result<Option<Repo>> {
         let list = self.list_repos().await?;
-        Ok(list.repos.into_iter().find(|r| r.name == name))
+        if let Some((owner, name)) = name_or_full.split_once('/') {
+            return Ok(list.repos.into_iter().find(|r| {
+                r.full_name.eq_ignore_ascii_case(name_or_full)
+                    || (r.name.eq_ignore_ascii_case(name)
+                        && r.full_name
+                            .split_once('/')
+                            .is_some_and(|(o, _)| o.eq_ignore_ascii_case(owner)))
+            }));
+        }
+        // Short name: only match when unique.
+        let matches: Vec<_> = list
+            .repos
+            .into_iter()
+            .filter(|r| r.name.eq_ignore_ascii_case(name_or_full))
+            .collect();
+        match matches.len() {
+            1 => Ok(Some(matches.into_iter().next().unwrap())),
+            0 => Ok(None),
+            _ => Err(anyhow!(
+                "ambiguous repo name '{name_or_full}' — use owner/name ({} matches)",
+                matches.len()
+            )),
+        }
     }
 
     pub fn api_base(&self) -> &str {

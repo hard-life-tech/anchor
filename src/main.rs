@@ -51,6 +51,45 @@ async fn main() -> anyhow::Result<()> {
     let db = Db::open(&config.database_path)?;
     tracing::info!(path = %db.path().display(), "opened settings database");
 
+    // Migrate legacy 1:1 project dirs into sibling workspace layout.
+    match git::migrate_all_legacy(&config.projects_dir, &config.github_user).await {
+        Ok(migrated) if !migrated.is_empty() => {
+            tracing::info!(?migrated, "migrated legacy project layouts");
+            for slug in &migrated {
+                // Seed DB + project.json when missing.
+                if db.get_project_by_slug(slug)?.is_none() {
+                    let owner = &config.github_user;
+                    let full = format!("{owner}/{slug}");
+                    let record = crate::db::ProjectRecord {
+                        id: project_store::new_project_id(),
+                        slug: slug.clone(),
+                        name: slug.clone(),
+                        default_branch: Some("main".into()),
+                        created_at: chrono::Utc::now().to_rfc3339(),
+                        repos: vec![crate::db::ProjectRepoRecord {
+                            owner: owner.clone(),
+                            name: slug.clone(),
+                            full_name: full.clone(),
+                            clone_url: format!(
+                                "https://{}/{}.git",
+                                config.github_host, full
+                            ),
+                            private: false,
+                            default_branch: "main".into(),
+                        }],
+                    };
+                    if let Err(e) =
+                        project_store::save_project(&db, &config.projects_dir, &record).await
+                    {
+                        tracing::warn!(slug, error = %e, "failed to seed migrated project metadata");
+                    }
+                }
+            }
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "legacy project migration failed"),
+    }
+
     let auth = Arc::new(AuthConfig::from_config(&config));
     let github = GitHubClient::new(
         config.github_token.clone(),
