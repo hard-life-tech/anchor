@@ -82,6 +82,7 @@ pub async fn scrub_github_token(session: &str) -> Result<()> {
 }
 
 /// True when session env still lists `GITHUB_TOKEN` (should be false after scrub).
+#[cfg(test)]
 pub async fn session_has_github_token(session: &str) -> Result<bool> {
     let out = shell::run_tmux(&["show-environment", "-t", session]).await?;
     if !out.success() {

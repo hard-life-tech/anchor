@@ -13,7 +13,14 @@
 <body>
   <div class="wrap">
     <header class="header">
-      <h1 class="brand">Anchor</h1>
+      <div>
+        <h1 class="brand">Anchor</h1>
+        <p class="host-line">
+          <span class="mono">{{ github_user }}</span>
+          ·
+          <span class="mono">{{ github_host }}</span>
+        </p>
+      </div>
       <div class="health{% if !healthy %} down{% endif %}" title="GET /healthz">
         <span class="dot" aria-hidden="true"></span>
         <span>{% if healthy %}healthy{% else %}down{% endif %}</span>
@@ -28,7 +35,7 @@
 
     <section class="section" aria-labelledby="projects-heading">
       <h2 id="projects-heading">Projects</h2>
-      <p class="lead">On-disk worktrees and tmux window status.</p>
+      <p class="lead">On-disk worktrees, last sync result, and tmux window status.</p>
       <div class="toolbar">
         <button
           type="button"
@@ -45,7 +52,7 @@
 
     <section class="section" aria-labelledby="repos-heading">
       <h2 id="repos-heading">GitHub repos</h2>
-      <p class="lead">Sync a repo to create bare clone, worktrees, and tmux panes.</p>
+      <p class="lead">Private and org repos your token can access — sync creates bare clone, worktrees, and tmux panes.</p>
       <div class="toolbar">
         <button
           type="button"

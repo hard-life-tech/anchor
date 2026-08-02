@@ -1,11 +1,12 @@
 {% if projects.is_empty() %}
-  <p class="empty">No projects yet — sync a repo below.</p>
+  <p class="empty">No projects yet — sync a private or public repo from the list below.</p>
 {% else %}
   <table class="table">
     <thead>
       <tr>
         <th>Project</th>
         <th>Worktrees</th>
+        <th class="hide-sm">Sync</th>
         <th class="hide-sm">Tmux</th>
         <th></th>
       </tr>
@@ -14,7 +15,14 @@
       {% for p in projects %}
       <tr>
         <td>
-          <span class="mono">{{ p.name }}</span>
+          <div class="project-name">
+            <span class="mono">{{ p.name }}</span>
+            {% match p.visibility %}
+              {% when Some with (vis) %}
+                <span class="badge {{ vis }}">{{ vis }}</span>
+              {% when None %}
+            {% endmatch %}
+          </div>
         </td>
         <td>
           <div class="chips">
@@ -34,6 +42,17 @@
           </div>
         </td>
         <td class="hide-sm">
+          {% match p.last_sync %}
+            {% when Some with (sync) %}
+              <span class="chip {{ sync.chip_class() }}" title="{{ sync.message }}">{{ sync.label() }}</span>
+              {% if sync.is_failed() %}
+                <div class="sync-reason">{{ sync.message }}</div>
+              {% endif %}
+            {% when None %}
+              <span class="chip meta">never</span>
+          {% endmatch %}
+        </td>
+        <td class="hide-sm">
           {% if p.tmux_window_exists %}
             <span class="chip ok">window</span>
           {% else %}
@@ -48,7 +67,7 @@
             hx-target="#projects"
             hx-swap="innerHTML swap:150ms"
             hx-indicator="this"
-          >Sync</button>
+          >{% match p.last_sync %}{% when Some with (sync) %}{% if sync.is_failed() %}Retry{% else %}Sync{% endif %}{% when None %}Sync{% endmatch %}</button>
         </td>
       </tr>
       {% endfor %}

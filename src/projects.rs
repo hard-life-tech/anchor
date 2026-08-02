@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::error::AppError;
 use crate::git;
+use crate::sync_memory::LastSync;
 use crate::tmux;
 use crate::AppState;
 
@@ -16,17 +17,25 @@ pub struct ProjectStatus {
     pub tmux_window_exists: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_synced: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_sync: Option<LastSync>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<&'static str>,
 }
 
 pub async fn build_status(state: &AppState, name: &str) -> Result<ProjectStatus, AppError> {
-    let default_branch = state
-        .github
-        .find_repo(name)
-        .await
-        .ok()
-        .flatten()
-        .map(|r| r.default_branch)
+    let gh = state.github.find_repo(name).await.ok().flatten();
+    let default_branch = gh
+        .as_ref()
+        .map(|r| r.default_branch.clone())
         .unwrap_or_else(|| "main".into());
+    let visibility = gh.as_ref().map(|r| {
+        if r.private {
+            "private"
+        } else {
+            "public"
+        }
+    });
 
     let worktrees = git::project_worktree_statuses(&state.config.projects_dir, name, &default_branch)
         .await
@@ -39,12 +48,17 @@ pub async fn build_status(state: &AppState, name: &str) -> Result<ProjectStatus,
             .await
             .unwrap_or(false);
 
+    let last_sync = state.sync_memory.get(name).await;
+    let last_synced = last_sync.as_ref().map(|s| s.at);
+
     Ok(ProjectStatus {
         name: name.into(),
         on_disk: true,
         worktrees,
         tmux_window_exists,
-        last_synced: None,
+        last_synced,
+        last_sync,
+        visibility,
     })
 }
 

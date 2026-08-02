@@ -78,20 +78,34 @@ async fn sync_project(
         .map_err(|e| AppError::BadGateway(e.to_string()))?
         .ok_or_else(|| AppError::NotFound(format!("unknown GitHub repo: {repo}")))?;
 
-    let (created, fetched, worktrees) = git::sync_project(
+    let sync_result = git::sync_project(
         &state.config.projects_dir,
         &repo,
         &gh_repo.clone_url,
         &gh_repo.default_branch,
         &state.config.github_token,
     )
-    .await
-    .map_err(|e| AppError::BadGateway(e.to_string()))?;
+    .await;
+
+    let (created, fetched, worktrees) = match sync_result {
+        Ok(v) => v,
+        Err(e) => {
+            let msg = e.to_string();
+            state.sync_memory.record_err(&repo, &msg).await;
+            return Err(AppError::BadGateway(msg));
+        }
+    };
+
+    let actions: Vec<_> = worktrees
+        .iter()
+        .map(|w| (w.agent.clone(), w.action))
+        .collect();
+    state.sync_memory.record_ok(&repo, &actions).await;
 
     let cursor_cwd = git::worktree_dir(&state.config.projects_dir, &repo, "cursor");
     let opencode_cwd = git::worktree_dir(&state.config.projects_dir, &repo, "opencode");
 
-    let tmux = tmux::ensure_project_window(
+    let tmux = match tmux::ensure_project_window(
         &state.config.tmux_session,
         &repo,
         &cursor_cwd.to_string_lossy(),
@@ -100,7 +114,14 @@ async fn sync_project(
         &state.config.opencode_cmd,
     )
     .await
-    .map_err(|e| AppError::BadGateway(e.to_string()))?;
+    {
+        Ok(t) => t,
+        Err(e) => {
+            let msg = e.to_string();
+            state.sync_memory.record_err(&repo, &msg).await;
+            return Err(AppError::BadGateway(msg));
+        }
+    };
 
     Ok(Json(SyncResponse {
         name: repo,

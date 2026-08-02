@@ -192,6 +192,11 @@ button.htmx-request {
   border-color: rgba(58, 143, 106, 0.35);
 }
 
+.chip.warn {
+  color: var(--warn);
+  border-color: rgba(179, 122, 58, 0.45);
+}
+
 .chip.dirty,
 .chip.diverged {
   color: var(--danger);
@@ -200,6 +205,59 @@ button.htmx-request {
 
 .chip.meta {
   color: var(--muted);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.4rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  vertical-align: middle;
+}
+
+.badge.private {
+  color: var(--warn);
+  border-color: rgba(179, 122, 58, 0.45);
+  background: rgba(179, 122, 58, 0.1);
+}
+
+.badge.public {
+  color: var(--ok);
+  border-color: rgba(58, 143, 106, 0.35);
+  background: rgba(58, 143, 106, 0.08);
+}
+
+.badge.on-disk {
+  color: var(--muted);
+}
+
+.project-name,
+.repo-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.host-line {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.sync-reason {
+  margin-top: 0.35rem;
+  max-width: 18rem;
+  color: var(--danger);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .empty {

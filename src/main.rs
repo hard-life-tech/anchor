@@ -8,6 +8,7 @@ mod git;
 mod github;
 mod projects;
 mod shell;
+mod sync_memory;
 mod tmux;
 
 use std::net::SocketAddr;
@@ -17,11 +18,13 @@ use tracing_subscriber::EnvFilter;
 
 use crate::config::Config;
 use crate::github::GitHubClient;
+use crate::sync_memory::SyncMemory;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
     pub github: Arc<GitHubClient>,
+    pub sync_memory: SyncMemory,
 }
 
 #[tokio::main]
@@ -44,6 +47,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         config: Arc::new(config),
         github: Arc::new(github),
+        sync_memory: SyncMemory::new(),
     };
 
     let app = api::router(state.clone());

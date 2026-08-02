@@ -39,6 +39,7 @@ struct DashboardTemplate {
     projects: Vec<ProjectStatus>,
     repos: Vec<RepoRow>,
     github_user: String,
+    github_host: String,
 }
 
 #[derive(Template, WebTemplate)]
@@ -52,6 +53,7 @@ struct ProjectsPartial {
 struct ReposPartial {
     repos: Vec<RepoRow>,
     github_user: String,
+    github_host: String,
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +74,7 @@ async fn dashboard(State(state): State<AppState>) -> Result<impl IntoResponse, A
         projects,
         repos,
         github_user: state.config.github_user.clone(),
+        github_host: state.config.github_host.clone(),
     })
 }
 
@@ -87,6 +90,7 @@ async fn partial_repos(State(state): State<AppState>) -> Result<impl IntoRespons
     Ok(ReposPartial {
         repos,
         github_user: state.config.github_user.clone(),
+        github_host: state.config.github_host.clone(),
     })
 }
 
@@ -101,10 +105,11 @@ async fn partial_sync(
         .map_err(|e| AppError::Other(e.into()))?;
 
     match sync_result {
-        Ok(()) => {
+        Ok(summary) => {
             let flash = format!(
-                r#"<div class="flash" id="flash" hx-swap-oob="true">Synced <span class="mono">{}</span>.</div>"#,
-                html_escape(&repo)
+                r#"<div class="flash" id="flash" hx-swap-oob="true">Synced <span class="mono">{}</span> — {}.</div>"#,
+                html_escape(&repo),
+                html_escape(&summary)
             );
             Ok(Html(format!("{flash}{projects_html}")).into_response())
         }
@@ -119,7 +124,7 @@ async fn partial_sync(
     }
 }
 
-async fn run_sync(state: &AppState, repo: &str) -> Result<(), AppError> {
+async fn run_sync(state: &AppState, repo: &str) -> Result<String, AppError> {
     let gh_repo = state
         .github
         .find_repo(repo)
@@ -127,20 +132,34 @@ async fn run_sync(state: &AppState, repo: &str) -> Result<(), AppError> {
         .map_err(|e| AppError::BadGateway(e.to_string()))?
         .ok_or_else(|| AppError::NotFound(format!("unknown GitHub repo: {repo}")))?;
 
-    let (_created, _fetched, _worktrees) = git::sync_project(
+    let sync_result = git::sync_project(
         &state.config.projects_dir,
         repo,
         &gh_repo.clone_url,
         &gh_repo.default_branch,
         &state.config.github_token,
     )
-    .await
-    .map_err(|e| AppError::BadGateway(e.to_string()))?;
+    .await;
+
+    let (_created, _fetched, worktrees) = match sync_result {
+        Ok(v) => v,
+        Err(e) => {
+            let msg = e.to_string();
+            state.sync_memory.record_err(repo, &msg).await;
+            return Err(AppError::BadGateway(msg));
+        }
+    };
+
+    let actions: Vec<_> = worktrees
+        .iter()
+        .map(|w| (w.agent.clone(), w.action))
+        .collect();
+    state.sync_memory.record_ok(repo, &actions).await;
 
     let cursor_cwd = git::worktree_dir(&state.config.projects_dir, repo, "cursor");
     let opencode_cwd = git::worktree_dir(&state.config.projects_dir, repo, "opencode");
 
-    tmux::ensure_project_window(
+    if let Err(e) = tmux::ensure_project_window(
         &state.config.tmux_session,
         repo,
         &cursor_cwd.to_string_lossy(),
@@ -149,9 +168,16 @@ async fn run_sync(state: &AppState, repo: &str) -> Result<(), AppError> {
         &state.config.opencode_cmd,
     )
     .await
-    .map_err(|e| AppError::BadGateway(e.to_string()))?;
+    {
+        let msg = e.to_string();
+        state.sync_memory.record_err(repo, &msg).await;
+        return Err(AppError::BadGateway(msg));
+    }
 
-    Ok(())
+    let last = state.sync_memory.get(repo).await;
+    Ok(last
+        .map(|s| s.message)
+        .unwrap_or_else(|| "ok".into()))
 }
 
 async fn load_repo_rows(state: &AppState) -> anyhow::Result<Vec<RepoRow>> {
@@ -182,6 +208,8 @@ fn html_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sync_memory::{LastSync, SyncOutcome};
+    use chrono::Utc;
 
     #[test]
     fn projects_partial_renders_empty() {
@@ -209,6 +237,14 @@ mod tests {
                 }],
                 tmux_window_exists: false,
                 last_synced: None,
+                last_sync: Some(LastSync {
+                    outcome: SyncOutcome::Failed,
+                    message: "GitHub authentication required or denied".into(),
+                    at: Utc::now(),
+                    skipped_dirty: 0,
+                    skipped_diverged: 0,
+                }),
+                visibility: Some("private"),
             }],
         }
         .render()
@@ -217,16 +253,19 @@ mod tests {
         assert!(html.contains("cursor"));
         assert!(html.contains("none"));
         assert!(html.contains("Sync"));
+        assert!(html.contains("private"));
+        assert!(html.contains("failed") || html.contains("authentication"));
     }
 
     #[test]
     fn repos_partial_renders() {
         let html = ReposPartial {
             github_user: "alice".into(),
+            github_host: "github.com".into(),
             repos: vec![RepoRow {
                 name: "anchor".into(),
                 full_name: "alice/anchor".into(),
-                private: false,
+                private: true,
                 default_branch: "main".into(),
                 on_disk: false,
             }],
@@ -235,5 +274,7 @@ mod tests {
         .unwrap();
         assert!(html.contains("alice/anchor"));
         assert!(html.contains(">Sync<"));
+        assert!(html.contains("private"));
+        assert!(html.contains("github.com"));
     }
 }

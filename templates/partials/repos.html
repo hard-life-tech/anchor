@@ -1,14 +1,25 @@
 {% if repos.is_empty() %}
-  <p class="empty">No repos returned for {{ github_user }}.</p>
+  <p class="empty">
+    No repos returned for <span class="mono">{{ github_user }}</span> on
+    <span class="mono">{{ github_host }}</span>.
+    Check <span class="mono">GITHUB_TOKEN</span> scope and enterprise host settings.
+  </p>
 {% else %}
   <ul class="repo-list">
     {% for r in repos %}
     <li>
       <div>
-        <div class="mono">{{ r.full_name }}</div>
+        <div class="repo-title">
+          <span class="mono">{{ r.full_name }}</span>
+          <span class="badge {% if r.private %}private{% else %}public{% endif %}">
+            {% if r.private %}private{% else %}public{% endif %}
+          </span>
+          {% if r.on_disk %}
+            <span class="badge on-disk">on disk</span>
+          {% endif %}
+        </div>
         <div class="repo-meta">
-          {{ r.default_branch }}{% if r.private %} · private{% else %} · public{% endif %}
-          {% if r.on_disk %} · on disk{% endif %}
+          {{ r.default_branch }} · {{ github_host }}
         </div>
       </div>
       <button

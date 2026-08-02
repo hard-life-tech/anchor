@@ -120,6 +120,7 @@ impl RedactingMakeWriter {
     }
 
     /// Capture redacted output into a shared buffer (tests).
+    #[cfg(test)]
     pub fn buffer(buf: Arc<Mutex<Vec<u8>>>) -> Self {
         Self { inner: Some(buf) }
     }
