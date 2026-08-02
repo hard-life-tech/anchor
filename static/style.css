@@ -1,0 +1,262 @@
+:root {
+  --bg: #0f1419;
+  --bg-elevated: #161c23;
+  --fg: #e7ecf1;
+  --muted: #8b98a5;
+  --accent: #2a6f5e;
+  --accent-hover: #348572;
+  --danger: #b33a3a;
+  --warn: #b37a3a;
+  --ok: #3a8f6a;
+  --border: #2a343f;
+  --font-sans: "IBM Plex Sans", "Source Sans 3", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(1200px 480px at 10% -10%, rgba(42, 111, 94, 0.22), transparent 55%),
+    radial-gradient(900px 400px at 100% 0%, rgba(42, 90, 130, 0.12), transparent 50%),
+    var(--bg);
+  color: var(--fg);
+  line-height: 1.45;
+}
+
+a {
+  color: #7cb7ff;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 3rem;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.health {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.health .dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.health.down .dot {
+  background: var(--danger);
+}
+
+.section {
+  margin-bottom: 2rem;
+}
+
+.section h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+}
+
+.section .lead {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 0.85rem;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+button,
+.btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.95rem;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.55rem 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button.primary,
+.btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #f4fffb;
+}
+
+button.primary:hover,
+.btn.primary:hover {
+  background: var(--accent-hover);
+}
+
+button:disabled,
+.btn:disabled,
+.htmx-request button,
+button.htmx-request {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.7rem 0.45rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.chip.ok {
+  color: var(--ok);
+  border-color: rgba(58, 143, 106, 0.35);
+}
+
+.chip.dirty,
+.chip.diverged {
+  color: var(--danger);
+  border-color: rgba(179, 58, 58, 0.4);
+}
+
+.chip.meta {
+  color: var(--muted);
+}
+
+.empty {
+  color: var(--muted);
+  padding: 1rem 0;
+}
+
+.flash {
+  margin: 0.5rem 0 1rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 6px;
+  background: rgba(42, 111, 94, 0.18);
+  border: 1px solid rgba(42, 111, 94, 0.35);
+  font-size: 0.9rem;
+}
+
+.flash.error {
+  background: rgba(179, 58, 58, 0.15);
+  border-color: rgba(179, 58, 58, 0.4);
+}
+
+.repo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.repo-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.repo-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.fade {
+  opacity: 1;
+  transition: opacity 150ms ease;
+}
+
+.htmx-swapping .fade {
+  opacity: 0;
+}
+
+@media (max-width: 640px) {
+  .hide-sm {
+    display: none;
+  }
+
+  .repo-list li {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
