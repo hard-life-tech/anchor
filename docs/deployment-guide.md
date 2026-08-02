@@ -30,14 +30,26 @@ Copy `.env.example` → `.env` (never commit `.env`):
 |----------|----------|---------|-------|
 | `GITHUB_TOKEN` | yes | — | PAT with private repo access; Anchor **process** env only |
 | `GITHUB_USER` | yes | — | Account shown on the dashboard |
+| `ANCHOR_PASSWORD` | yes | — | Dashboard / API login password |
+| `ANCHOR_USER` | no | `admin` | Login username |
+| `ANCHOR_SESSION_SECRET` | no | derived | Cookie HMAC key |
+| `ANCHOR_COOKIE_SECURE` | no | `false` | `true` when served over HTTPS |
+| `DATABASE_URL` | no | `sqlite:$HOME/projects/anchor.db` | Settings DB |
 | `GITHUB_HOST` | no | `github.com` | GHES hostname if not github.com |
 | `GITHUB_API_URL` | no | derived from host | Override REST base for GHES |
 | `PROJECTS_DIR` | no | `$HOME/projects` | Inside container: `/home/agent/projects` |
 | `TMUX_SESSION` | no | `agents` | Shared tmux session name |
-| `CURSOR_CMD` | no | `cursor-agent` | Left pane command |
-| `OPENCODE_CMD` | no | `opencode` | Right pane command |
+| `CURSOR_CMD` | no | `cursor-agent` | Left pane command (Settings UI can override) |
+| `OPENCODE_CMD` | no | `opencode` | Right pane command (Settings UI can override) |
 | `PORT` | no | `8080` | HTTP listen |
 | `LOG_LEVEL` | no | `info` | tracing filter |
+
+### Auth (mandatory)
+
+- Set a strong `ANCHOR_PASSWORD` before exposing port 8080 on any network.
+- Prefer Tailscale (or equivalent) even with a password — do **not** put Anchor on a public hostname without both network isolation and auth.
+- Sign in at `/login`; session cookie `anchor_session` gates the dashboard, API, settings, and terminal WebSocket.
+- `/healthz` stays public for orchestrator probes.
 
 ### Secret isolation (mandatory)
 
@@ -45,31 +57,35 @@ Copy `.env.example` → `.env` (never commit `.env`):
 - **Never** export `GITHUB_TOKEN` into agent tmux panes (Cursor / OpenCode).
 - Agents authenticate themselves via their own OAuth/device flows; state persists under `/home/agent`.
 - Coding agents working *on this repo* must not read `*.env` (see root `.cursorignore` / `opencode.json`).
-
+- Never commit `.env`, real passwords, or PATs.
 ---
 
 ## Local / VPS Compose
 
 ```bash
 cp .env.example .env
-# edit GITHUB_TOKEN and GITHUB_USER
+# edit GITHUB_TOKEN, GITHUB_USER, ANCHOR_PASSWORD
 
 docker compose up --build -d
 curl -sS http://127.0.0.1:8080/healthz
+# Open http://127.0.0.1:8080/login — then Projects → Terminal, or Settings
 # Compose healthcheck also probes /healthz inside the container
 ```
 
 Volumes (from `docker-compose.yml`):
 
-- `agent-home` → `/home/agent` (projects, agent auth, gitconfig)
+- `agent-home` → `/home/agent` (projects, agent auth, gitconfig, **settings SQLite**)
 - `tmux-sockets` → `/tmp` (shared with optional ttyd)
 
 The container runs as non-root user **`agent`** (uid/gid 1000 by default).
 
+### Browser terminals
+
+After sync creates a tmux window, open **Terminal** on a project row (or `/projects/{repo}/terminal?agent=cursor`). Tabs switch Cursor / OpenCode panes. The agent TUI is the chat surface.
+
 ### Container restart behavior
 
-Restart kills the live tmux session (same as host reboot). Worktrees and agent auth on the volume remain. Next `POST .../sync` recreates the window/panes. This is a deliberate v1 tradeoff.
-
+Restart kills the live tmux session (same as host reboot). Worktrees, agent auth, and the settings DB on the volume remain. Next `POST .../sync` recreates the window/panes. This is a deliberate v1 tradeoff.
 ---
 
 ## Coolify / Traefik
@@ -77,7 +93,7 @@ Restart kills the live tmux session (same as host reboot). Worktrees and agent a
 1. Create a Docker Compose resource pointing at this repo.
 2. Inject `GITHUB_TOKEN` / `GITHUB_USER` as secrets — not build args.
 3. Remove host `ports:` publish; attach to the proxy network with internal labels.
-4. Restrict access to Tailscale (or Coolify's private networking). Do not put Anchor on a public hostname without auth (auth is out of scope for v1).
+4. Restrict access to Tailscale (or Coolify's private networking). Require `ANCHOR_PASSWORD`; do not put Anchor on a public hostname without both mesh isolation and auth.
 
 Use the prod override (drops host port publish):
 

@@ -24,20 +24,20 @@ Operators run multiple AI coding agents against many GitHub repos. Sessions die 
 - Ensure a tmux window with two panes (Cursor CLI + OpenCode) without killing live work.
 - Expose a small HTTP API and a minimal server-rendered dashboard.
 - Keep `GITHUB_TOKEN` in the Anchor process environment only.
+- Dashboard login (session cookie + `ANCHOR_PASSWORD`).
+- SQLite for operator settings (agent commands / prefs).
+- In-browser terminals (xterm.js) attached to agent tmux panes.
 
 ## 3. Non-goals (v1)
 
 - Multi-tenant SaaS / billing / SSO (private Management product).
-- Prompt relay into agent panes.
+- Prompt relay into agent panes (use the agent TUI in the browser terminal).
 - GitHub App / webhooks.
-- Built-in web terminal (optional ttyd sidecar only).
-- Dashboard login (Tailscale trust).
-- Database.
 
 ## 4. Product boundary
 
 ```
-Anchor Core (OSS)  →  git sync · worktrees · tmux · HTTP · local dashboard
+Anchor Core (OSS)  →  git sync · worktrees · tmux · HTTP · local dashboard · auth · settings DB · web terminal
         │
         ▼ optional
 Anchor Management (private)  →  multi-tenant control plane, billing, fleets
@@ -58,40 +58,50 @@ $PROJECTS_DIR/<repo>/
 
 Shared tmux session `$TMUX_SESSION` (default `agents`); one window per repo.
 
+SQLite settings DB default: `$HOME/projects/anchor.db` (override with `DATABASE_URL` / `ANCHOR_DB`).
+
 ## 6. Environment
 
 | Variable | Required | Default | Notes |
 |----------|----------|---------|-------|
 | `GITHUB_TOKEN` | yes | — | Fine-grained PAT, `repo` / Contents read; **process env only** |
 | `GITHUB_USER` | yes | — | Account shown on the dashboard |
+| `ANCHOR_PASSWORD` | yes | — | Dashboard login password |
+| `ANCHOR_USER` | no | `admin` | Dashboard login username |
+| `ANCHOR_SESSION_SECRET` | no | derived from password | HMAC key for session cookies |
+| `ANCHOR_COOKIE_SECURE` | no | `false` | Set `true` behind HTTPS |
+| `DATABASE_URL` | no | `sqlite:$HOME/projects/anchor.db` | Settings DB (`sqlite:/path`) |
+| `ANCHOR_DB` | no | — | Alternate absolute DB path |
 | `GITHUB_HOST` | no | `github.com` | Hostname for display/clone context (GHES: `github.example.com`) |
 | `GITHUB_API_URL` | no | `https://api.github.com` (or `https://$GITHUB_HOST/api/v3` when host ≠ github.com) | REST API base for listing |
 | `PROJECTS_DIR` | no | `$HOME/projects` | Inside container: `/home/agent/projects` |
 | `TMUX_SESSION` | no | `agents` | Shared tmux session name |
-| `CURSOR_CMD` | no | `cursor-agent` | Left pane command |
-| `OPENCODE_CMD` | no | `opencode` | Right pane command |
+| `CURSOR_CMD` | no | `cursor-agent` | Left pane command (overridable in Settings UI) |
+| `OPENCODE_CMD` | no | `opencode` | Right pane command (overridable in Settings UI) |
 | `PORT` | no | `8080` | HTTP listen |
 | `LOG_LEVEL` | no | `info` | tracing filter |
 
-Never log or echo `GITHUB_TOKEN`. Never export it into agent tmux panes.
+Never log or echo `GITHUB_TOKEN` or `ANCHOR_PASSWORD`. Never export `GITHUB_TOKEN` into agent tmux panes.
 
 ## 7. Stack
 
-- Rust 2021, tokio, axum
+- Rust 2021, tokio, axum (HTTP + WebSocket)
 - serde / serde_json, reqwest, tracing / tracing-subscriber
 - anyhow / thiserror
 - Askama + htmx for the dashboard (no SPA)
+- rusqlite (bundled) for settings
+- portable-pty + xterm.js for in-browser tmux attach
 - Shell out to `git` and `tmux` (no `git2` for worktrees in v1)
 
 ## 8. HTTP surface
 
 See [docs/api-contract.md](docs/api-contract.md).
 
-- `GET /healthz`
-- `GET /api/repos`
-- `GET /api/projects`
-- `POST /api/projects/{repo}/sync`
-- `GET /api/projects/{repo}/status`
+- `GET /healthz` — public
+- `GET|POST /login`, `POST /logout`
+- `GET /api/repos`, `GET /api/projects`, sync/status — **auth required**
+- `GET|POST /api/settings`, `GET|POST /settings`
+- `GET /projects/{repo}/terminal`, `WS /ws/terminal/{repo}/{agent}`
 - `GET /` — Askama dashboard shell (skeletons); lists via `/partials/*`
 
 ## 9. Sync rules
@@ -107,7 +117,8 @@ See [docs/api-contract.md](docs/api-contract.md).
 - Agents authenticate via their own OAuth/device flows.
 - Coding agents editing *this* repo must not read `*.env`.
 - Process runs as `agent`, not root.
-- Keep the service off the public internet (Tailscale).
+- All routes except `/healthz`, `/login`, and `/static/*` require a session cookie.
+- Keep the service off the public internet when possible (Tailscale); password auth is a second layer, not a substitute for network isolation.
 
 ## 11. Deployment
 
@@ -119,7 +130,7 @@ Primary tree: [docs/README.md](docs/README.md). Timeline: [docs/project-timeline
 
 ## 13. Out of scope for Core OSS
 
-GitHub App, webhooks, dashboard auth, built-in web terminal, multi-user Core, Management SaaS features.
+GitHub App, webhooks, multi-user Core, Management SaaS features.
 
 ## 14. MVP acceptance criteria
 
@@ -127,5 +138,8 @@ GitHub App, webhooks, dashboard auth, built-in web terminal, multi-user Core, Ma
 - [ ] Re-sync is idempotent (no duplicate windows/worktrees, no force overwrite).
 - [ ] Dirty or diverged worktrees are reported and left untouched.
 - [x] `GET /api/projects` is accurate after container restart (tmux gone, disk intact) — inventory from disk; Compose e2e with live PAT still open.
-- [ ] `GET /healthz` returns `OK`; Compose brings up with only `GITHUB_TOKEN` + `GITHUB_USER`.
+- [ ] `GET /healthz` returns `OK`; Compose brings up with `GITHUB_TOKEN` + `GITHUB_USER` + `ANCHOR_PASSWORD`.
 - [x] Token never appears in API responses, logs, or agent pane environments — scrub + redaction unit-tested (API JSON, tracing writer, shell stderr); live pane Compose e2e open.
+- [x] Unauthenticated API/dashboard/terminal requests are rejected (except `/healthz` / login / static).
+- [x] Settings persist in SQLite and override agent launch commands at sync time.
+- [x] Browser terminal attaches to an existing tmux window pane via WebSocket + PTY.

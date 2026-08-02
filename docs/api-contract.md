@@ -1,15 +1,21 @@
 # HTTP API contract (v1)
 
 Base URL: `http://<host>:$PORT` (default `8080`).  
-Auth: **none** on the API in v1 — rely on private network (Tailscale). Do not expose publicly.
+Auth: **session cookie** required on all routes except `GET /healthz`, `GET|POST /login`, and `/static/*`. Set `ANCHOR_PASSWORD` (and optional `ANCHOR_USER`). Do not expose publicly without Tailscale (or equivalent) even with a password.
 
-All JSON uses `Content-Type: application/json`. Errors return a JSON body:
+Unauthenticated API/WebSocket calls return `401`:
+
+```json
+{ "error": "authentication required", "code": "UNAUTHORIZED" }
+```
+
+All other JSON uses `Content-Type: application/json`. Errors return:
 
 ```json
 { "error": "human-readable message", "code": "MACHINE_CODE" }
 ```
 
-Never include secrets (`GITHUB_TOKEN`, agent OAuth tokens) in responses or error details.
+Never include secrets (`GITHUB_TOKEN`, `ANCHOR_PASSWORD`, agent OAuth tokens) in responses or error details.
 
 ---
 
@@ -95,7 +101,7 @@ List on-disk projects under `PROJECTS_DIR` with git + tmux status.
 
 `last_synced` / `last_sync` come from in-memory sync outcomes in the current process (lost on restart). `visibility` is `public` / `private` when the repo is still visible via the GitHub list API.
 
-`last_synced` may be omitted or null if never recorded (v1 may derive from filesystem mtime or omit persistence — see [ADR-0008](conceptual/adr/ADR-0008-no-database.md)).
+Operator settings (agent commands) persist in SQLite — see `/api/settings` and [ADR-0008](conceptual/adr/ADR-0008-no-database.md).
 
 ---
 
@@ -155,11 +161,25 @@ Detailed status for one project.
 
 ---
 
+## `GET|POST /api/settings`
+
+Read or update operator settings (Cursor/OpenCode commands, args, enable flags, notes). Values override env defaults at sync time. Empty command strings mean “use env default”.
+
+**Response `200`:** JSON including `cursor_cmd`, `opencode_cmd`, `cursor_args`, `opencode_args`, `cursor_enabled`, `opencode_enabled`, `install_notes`, `resolved`, `env_defaults`, `database`.
+
+---
+
 ## Dashboard (non-API)
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET` | `/` | Shell + skeletons only (Askama); no GitHub wait |
+| `GET` | `/login` | Login form (public) |
+| `POST` | `/login` | Sets session cookie |
+| `POST` | `/logout` | Clears session |
+| `GET` | `/` | Shell + skeletons only (Askama); auth required |
+| `GET` | `/settings` | Agent config UI |
+| `GET` | `/projects/{repo}/terminal` | xterm.js page (`?agent=cursor\|opencode`) |
+| `WS` | `/ws/terminal/{repo}/{agent}` | PTY attach to tmux pane (auth via cookie) |
 | `GET` | `/partials/projects` | Project rows (disk + git + tmux) |
 | `GET` | `/partials/repos` | GitHub repo list (`/user/repos`, short TTL cache) |
 | `POST` | `/partials/projects/{repo}/sync` | Sync + OOB flash; invalidates repo cache |
@@ -170,7 +190,7 @@ Detailed status for one project.
 
 ## Non-goals for the API (v1)
 
-- Prompt relay into agent panes
-- Auth / sessions / API keys
+- Prompt relay into agent panes (use the browser terminal / agent TUI)
+- Multi-user accounts / SSO
 - Webhooks
-- Streaming logs
+- Streaming agent logs outside the PTY WebSocket

@@ -1,6 +1,6 @@
-# Data storage — no database
+# Data storage — SQLite settings + live sources
 
-v1 Anchor has **no SQL/embedded DB**.
+Anchor persists **operator settings** in SQLite. Git/tmux remain the source of truth for repos and live agents.
 
 ## Sources of truth
 
@@ -11,11 +11,10 @@ v1 Anchor has **no SQL/embedded DB**.
 | Live agent processes | tmux session/windows/panes |
 | GitHub repo list cache | Optional **in-memory** only (TTL) |
 | Agent CLI auth | Files under `/home/agent` (Cursor/OpenCode dirs) |
+| Operator settings (cmds, args, notes) | SQLite (`DATABASE_URL` / `ANCHOR_DB`) |
 
 ## Implications
 
-- Restart loses in-memory cache and live tmux; disk state remains.
-- `GET /api/projects` must query git/tmux/fs — not a table.
-- `last_synced` if shown can be derived (e.g. fetch reflog / mtime) or omitted — do not invent a SQLite dependency for v1.
-
-See [ADR-0008](../../adr/ADR-0008-no-database.md).
+- Restart loses in-memory sync outcomes and live tmux; disk + settings DB remain.
+- `GET /api/projects` still queries git/tmux/fs — not a projects table.
+- See [ADR-0008](../../adr/ADR-0008-no-database.md).
