@@ -419,6 +419,36 @@ mod tests {
             .all(|r| r.action == WorktreeAction::AlreadyUpToDate));
     }
 
+    /// Restart simulation: disk inventory must not depend on tmux/process state.
+    #[tokio::test]
+    async fn list_on_disk_projects_survives_without_tmux() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        let remote = init_upstream(&src).await;
+        let projects = tmp.path().join("projects");
+
+        sync_project(&projects, "demo", &remote, "main", "unused")
+            .await
+            .unwrap();
+        sync_project(&projects, "other", &remote, "main", "unused")
+            .await
+            .unwrap();
+
+        // Drop a junk dir without .bare — must be ignored.
+        tokio::fs::create_dir_all(projects.join("not-a-project"))
+            .await
+            .unwrap();
+
+        let names = list_on_disk_projects(&projects).await.unwrap();
+        assert_eq!(names, vec!["demo".to_string(), "other".to_string()]);
+
+        let statuses = project_worktree_statuses(&projects, "demo", "main")
+            .await
+            .unwrap();
+        assert_eq!(statuses.len(), 2);
+        assert!(statuses.iter().all(|s| !s.dirty));
+    }
+
     #[tokio::test]
     async fn sync_skips_dirty_worktree() {
         let tmp = TempDir::new().unwrap();
