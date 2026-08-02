@@ -14,7 +14,8 @@ pub struct TmuxEnsureResult {
 }
 
 /// Ensure session + window exist. Launch agent cmds only into empty panes.
-/// `GITHUB_TOKEN` is stripped from tmux invocations (see `shell::run_tmux`).
+/// `GITHUB_TOKEN` is stripped from tmux invocations (see `shell::run_tmux`)
+/// and unset on the session so panes never inherit it.
 pub async fn ensure_project_window(
     session: &str,
     window: &str,
@@ -55,6 +56,9 @@ pub async fn ensure_project_window(
         created_window = true;
     }
 
+    // Always scrub — session may have been created by an older Anchor or by hand.
+    scrub_github_token(session).await?;
+
     let target = format!("{session}:{window}");
     ensure_two_panes(&target, cursor_cwd, opencode_cwd).await?;
 
@@ -68,6 +72,25 @@ pub async fn ensure_project_window(
         created_window,
         panes_ensured: true,
     })
+}
+
+/// Drop `GITHUB_TOKEN` from global + session tmux environments.
+pub async fn scrub_github_token(session: &str) -> Result<()> {
+    let _ = shell::run_tmux(&["set-environment", "-g", "-u", "GITHUB_TOKEN"]).await;
+    let _ = shell::run_tmux(&["set-environment", "-t", session, "-u", "GITHUB_TOKEN"]).await;
+    Ok(())
+}
+
+/// True when session env still lists `GITHUB_TOKEN` (should be false after scrub).
+pub async fn session_has_github_token(session: &str) -> Result<bool> {
+    let out = shell::run_tmux(&["show-environment", "-t", session]).await?;
+    if !out.success() {
+        return Ok(false);
+    }
+    Ok(out
+        .stdout
+        .lines()
+        .any(|l| l.starts_with("GITHUB_TOKEN=") || l.trim() == "GITHUB_TOKEN"))
 }
 
 pub async fn session_exists(session: &str) -> Result<bool> {
@@ -138,8 +161,9 @@ async fn maybe_launch_pane(
     }
 
     let t = format!("{target}.{pane_index}");
-    // Clear GITHUB_TOKEN in the pane environment explicitly before launch.
-    let _ = shell::run_tmux(&["set-environment", "-t", target, "-u", "GITHUB_TOKEN"]).await;
+    // Session-level scrub already ran; clear again on the window target before launch.
+    let session = target.split(':').next().unwrap_or(target);
+    scrub_github_token(session).await?;
 
     let launch = format!("cd {} && exec {}", shell_quote(cwd), cmd);
     let out = shell::run_tmux(&["send-keys", "-t", &t, &launch, "C-m"])
@@ -206,6 +230,50 @@ mod tests {
         .unwrap();
         assert!(!r2.created_window);
         assert!(window_exists(&session, "demo").await.unwrap());
+        assert!(!session_has_github_token(&session).await.unwrap());
+
+        let _ = shell::run_tmux(&["kill-session", "-t", &session]).await;
+    }
+
+    #[tokio::test]
+    async fn scrub_removes_injected_token_from_session_env() {
+        if !tmux_available() {
+            eprintln!("skip: tmux not installed");
+            return;
+        }
+        let session = format!("anchor-scrub-{}", std::process::id());
+        let _ = shell::run_tmux(&["kill-session", "-t", &session]).await;
+
+        // Inject token via a tmux client that still has GITHUB_TOKEN stripped from
+        // our helper — use raw Command so we can set the var on set-environment.
+        let tmp = TempDir::new().unwrap();
+        let cwd = tmp.path().join("wt");
+        tokio::fs::create_dir_all(&cwd).await.unwrap();
+        let out = shell::run_tmux(&[
+            "new-session",
+            "-d",
+            "-s",
+            &session,
+            "-n",
+            "demo",
+            "-c",
+            &cwd.to_string_lossy(),
+        ])
+        .await
+        .unwrap();
+        out.ensure_success("new-session").unwrap();
+
+        // Force-set token on the session (simulates a leaky parent env).
+        let set = tokio::process::Command::new("tmux")
+            .args(["set-environment", "-t", &session, "GITHUB_TOKEN", "leaked-secret"])
+            .output()
+            .await
+            .unwrap();
+        assert!(set.status.success());
+        assert!(session_has_github_token(&session).await.unwrap());
+
+        scrub_github_token(&session).await.unwrap();
+        assert!(!session_has_github_token(&session).await.unwrap());
 
         let _ = shell::run_tmux(&["kill-session", "-t", &session]).await;
     }

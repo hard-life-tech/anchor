@@ -75,6 +75,34 @@ pub async fn run_git(args: &[&str], cwd: Option<&Path>, extra_env: &HashMap<Stri
     run("git", args, cwd, extra_env, &[]).await
 }
 
+/// Env keys stripped from every tmux client spawn (panes must not inherit these).
+pub const TMUX_SCRUB_ENV: &[&str] = &["GITHUB_TOKEN"];
+
 pub async fn run_tmux(args: &[&str]) -> Result<CmdOutput> {
-    run("tmux", args, None, &HashMap::new(), &["GITHUB_TOKEN"]).await
+    run("tmux", args, None, &HashMap::new(), TMUX_SCRUB_ENV).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn run_clears_requested_env_keys() {
+        // `/usr/bin/env` prints the child environment; cleared keys must be absent.
+        let out = run(
+            "env",
+            &[],
+            None,
+            &HashMap::from([("ANCHOR_TEST_KEEP".into(), "1".into())]),
+            &["GITHUB_TOKEN"],
+        )
+        .await
+        .unwrap();
+        assert!(out.success());
+        assert!(
+            !out.stdout.lines().any(|l| l.starts_with("GITHUB_TOKEN=")),
+            "GITHUB_TOKEN must not appear in child env"
+        );
+        assert!(out.stdout.lines().any(|l| l == "ANCHOR_TEST_KEEP=1"));
+    }
 }
