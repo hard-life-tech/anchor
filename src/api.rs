@@ -1,26 +1,41 @@
 //! HTTP routes per docs/api-contract.md.
 
 use axum::extract::{Path, State};
+use axum::middleware;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
 
+use crate::auth;
 use crate::dashboard;
 use crate::error::AppError;
 use crate::git::{self, WorktreeResult};
 use crate::projects::{self, ProjectStatus};
+use crate::settings;
+use crate::terminal;
 use crate::tmux::{self, TmuxEnsureResult};
 use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
-        .route("/healthz", get(healthz))
+    let protected = Router::new()
         .route("/api/repos", get(list_repos))
         .route("/api/projects", get(list_projects))
         .route("/api/projects/{repo}/sync", post(sync_project))
         .route("/api/projects/{repo}/status", get(project_status))
         .merge(dashboard::routes())
+        .merge(settings::routes())
+        .merge(terminal::routes())
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::require_auth,
+        ));
+
+    Router::new()
+        .route("/healthz", get(healthz))
+        .route("/static/style.css", get(dashboard::style_css))
+        .merge(auth::routes())
+        .merge(protected)
         .with_state(state)
 }
 
@@ -106,14 +121,15 @@ async fn sync_project(
 
     let cursor_cwd = git::worktree_dir(&state.config.projects_dir, &repo, "cursor");
     let opencode_cwd = git::worktree_dir(&state.config.projects_dir, &repo, "opencode");
+    let (cursor_cmd, opencode_cmd) = settings::effective_cmds(&state);
 
     let tmux = match tmux::ensure_project_window(
         &state.config.tmux_session,
         &repo,
         &cursor_cwd.to_string_lossy(),
         &opencode_cwd.to_string_lossy(),
-        &state.config.cursor_cmd,
-        &state.config.opencode_cmd,
+        &cursor_cmd,
+        &opencode_cmd,
     )
     .await
     {

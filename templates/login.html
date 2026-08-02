@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Anchor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="wrap login-wrap">
+    <header class="header login-header">
+      <h1 class="brand">Anchor</h1>
+      <p class="host-line">Operator sign-in</p>
+    </header>
+
+    {% match error %}
+      {% when Some with (msg) %}
+        <div class="flash error" role="alert">{{ msg }}</div>
+      {% when None %}
+    {% endmatch %}
+
+    <form class="login-form" method="post" action="/login" autocomplete="on">
+      <label class="field">
+        <span>Username</span>
+        <input type="text" name="username" value="{{ username }}" required autocomplete="username" autofocus>
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input type="password" name="password" required autocomplete="current-password">
+      </label>
+      <button type="submit" class="primary login-submit">Sign in</button>
+    </form>
+
+    <p class="login-hint">
+      Keep Anchor off the public internet. Prefer Tailscale (or equivalent) even with a password.
+      Set <span class="mono">ANCHOR_PASSWORD</span> in the process environment — never commit it.
+    </p>
+  </div>
+</body>
+</html>

@@ -20,6 +20,16 @@ pub struct Config {
     pub opencode_cmd: String,
     pub port: u16,
     pub log_level: String,
+    /// Dashboard login user (default `admin`).
+    pub anchor_user: String,
+    /// Dashboard login password (required).
+    pub anchor_password: String,
+    /// HMAC key for session cookies.
+    pub session_secret: Vec<u8>,
+    /// Set Secure flag on session cookie (HTTPS / Tailscale Serve).
+    pub cookie_secure: bool,
+    /// SQLite database path.
+    pub database_path: PathBuf,
 }
 
 impl std::fmt::Debug for Config {
@@ -35,6 +45,11 @@ impl std::fmt::Debug for Config {
             .field("opencode_cmd", &self.opencode_cmd)
             .field("port", &self.port)
             .field("log_level", &self.log_level)
+            .field("anchor_user", &self.anchor_user)
+            .field("anchor_password", &"[redacted]")
+            .field("session_secret", &"[redacted]")
+            .field("cookie_secure", &self.cookie_secure)
+            .field("database_path", &self.database_path)
             .finish()
     }
 }
@@ -95,6 +110,25 @@ impl Config {
             None => 8080,
         };
 
+        let anchor_password = required(map, "ANCHOR_PASSWORD")?;
+        let anchor_user = map
+            .get("ANCHOR_USER")
+            .cloned()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "admin".into());
+
+        let session_secret = match map.get("ANCHOR_SESSION_SECRET") {
+            Some(s) if !s.is_empty() => s.as_bytes().to_vec(),
+            _ => derive_session_secret(&anchor_password),
+        };
+
+        let cookie_secure = map
+            .get("ANCHOR_COOKIE_SECURE")
+            .map(|s| s == "1" || s.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
+        let database_path = resolve_database_path(map, &home)?;
+
         Ok(Self {
             github_token,
             github_user,
@@ -106,8 +140,65 @@ impl Config {
             opencode_cmd,
             port,
             log_level,
+            anchor_user,
+            anchor_password,
+            session_secret,
+            cookie_secure,
+            database_path,
         })
     }
+}
+
+fn derive_session_secret(password: &str) -> Vec<u8> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(b"anchor-session-v1:");
+    hasher.update(password.as_bytes());
+    hasher.finalize().to_vec()
+}
+
+/// Accept `DATABASE_URL=sqlite:/path` / `sqlite:///path` or `ANCHOR_DB` / default under home.
+fn resolve_database_path(
+    map: &HashMap<String, String>,
+    home: &str,
+) -> Result<PathBuf, ConfigError> {
+    if let Some(raw) = map.get("DATABASE_URL").filter(|s| !s.is_empty()) {
+        return parse_sqlite_url(raw);
+    }
+    if let Some(p) = map.get("ANCHOR_DB").filter(|s| !s.is_empty()) {
+        return Ok(PathBuf::from(p));
+    }
+    Ok(PathBuf::from(format!("{home}/projects/anchor.db")))
+}
+
+fn parse_sqlite_url(raw: &str) -> Result<PathBuf, ConfigError> {
+    let trimmed = raw.trim();
+    let path = if let Some(rest) = trimmed.strip_prefix("sqlite:") {
+        // sqlite:/abs or sqlite:///abs or sqlite://relative
+        let rest = rest.trim_start_matches("//");
+        if rest.is_empty() {
+            return Err(ConfigError::Invalid {
+                key: "DATABASE_URL",
+                message: "sqlite path is empty".into(),
+            });
+        }
+        // sqlite:///home/... → /home/... after stripping one leading slash pair carefully
+        if trimmed.starts_with("sqlite:///") {
+            format!("/{}", rest.trim_start_matches('/'))
+        } else if rest.starts_with('/') {
+            rest.to_string()
+        } else {
+            rest.to_string()
+        }
+    } else if trimmed.starts_with('/') || trimmed.starts_with('.') {
+        trimmed.to_string()
+    } else {
+        return Err(ConfigError::Invalid {
+            key: "DATABASE_URL",
+            message: format!("expected sqlite:/path or absolute path, got {trimmed}"),
+        });
+    };
+    Ok(PathBuf::from(path))
 }
 
 /// Resolve API base + clone/display host for github.com or GitHub Enterprise Server.
@@ -181,14 +272,33 @@ mod tests {
         assert!(err.to_string().contains("GITHUB_USER"));
     }
 
-    #[test]
-    fn config_defaults() {
-        let cfg = Config::from_env_map(&map(&[
+    fn base(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        let mut m = map(&[
             ("GITHUB_TOKEN", "t"),
             ("GITHUB_USER", "u"),
+            ("ANCHOR_PASSWORD", "pass"),
             ("HOME", "/tmp/agent"),
+        ]);
+        for (k, v) in pairs {
+            m.insert((*k).to_string(), (*v).to_string());
+        }
+        m
+    }
+
+    #[test]
+    fn config_requires_password() {
+        let err = Config::from_env_map(&map(&[
+            ("GITHUB_TOKEN", "t"),
+            ("GITHUB_USER", "u"),
+            ("HOME", "/tmp"),
         ]))
-        .unwrap();
+        .unwrap_err();
+        assert!(err.to_string().contains("ANCHOR_PASSWORD"));
+    }
+
+    #[test]
+    fn config_defaults() {
+        let cfg = Config::from_env_map(&base(&[])).unwrap();
         assert_eq!(cfg.projects_dir, PathBuf::from("/tmp/agent/projects"));
         assert_eq!(cfg.tmux_session, "agents");
         assert_eq!(cfg.cursor_cmd, "cursor-agent");
@@ -197,29 +307,38 @@ mod tests {
         assert_eq!(cfg.log_level, "info");
         assert_eq!(cfg.github_api_url, "https://api.github.com");
         assert_eq!(cfg.github_host, "github.com");
+        assert_eq!(cfg.anchor_user, "admin");
+        assert_eq!(
+            cfg.database_path,
+            PathBuf::from("/tmp/agent/projects/anchor.db")
+        );
+    }
+
+    #[test]
+    fn config_database_url_sqlite() {
+        let cfg = Config::from_env_map(&base(&[(
+            "DATABASE_URL",
+            "sqlite:///home/agent/projects/anchor.db",
+        )]))
+        .unwrap();
+        assert_eq!(
+            cfg.database_path,
+            PathBuf::from("/home/agent/projects/anchor.db")
+        );
     }
 
     #[test]
     fn config_ghes_defaults_api_from_host() {
-        let cfg = Config::from_env_map(&map(&[
-            ("GITHUB_TOKEN", "t"),
-            ("GITHUB_USER", "u"),
-            ("GITHUB_HOST", "github.example.com"),
-            ("HOME", "/tmp"),
-        ]))
-        .unwrap();
+        let cfg = Config::from_env_map(&base(&[("GITHUB_HOST", "github.example.com")])).unwrap();
         assert_eq!(cfg.github_host, "github.example.com");
         assert_eq!(cfg.github_api_url, "https://github.example.com/api/v3");
     }
 
     #[test]
     fn config_ghes_explicit_api_url() {
-        let cfg = Config::from_env_map(&map(&[
-            ("GITHUB_TOKEN", "t"),
-            ("GITHUB_USER", "u"),
+        let cfg = Config::from_env_map(&base(&[
             ("GITHUB_HOST", "github.example.com"),
             ("GITHUB_API_URL", "https://github.example.com/api/v3/"),
-            ("HOME", "/tmp"),
         ]))
         .unwrap();
         assert_eq!(cfg.github_api_url, "https://github.example.com/api/v3");
@@ -227,26 +346,26 @@ mod tests {
 
     #[test]
     fn config_rejects_bad_host() {
-        let err = Config::from_env_map(&map(&[
-            ("GITHUB_TOKEN", "t"),
-            ("GITHUB_USER", "u"),
-            ("GITHUB_HOST", "https://github.example.com"),
-            ("HOME", "/tmp"),
-        ]))
+        let err = Config::from_env_map(&base(&[(
+            "GITHUB_HOST",
+            "https://github.example.com",
+        )]))
         .unwrap_err();
         assert!(err.to_string().contains("GITHUB_HOST"));
     }
 
     #[test]
-    fn config_debug_redacts_token() {
+    fn config_debug_redacts_secrets() {
         let cfg = Config::from_env_map(&map(&[
             ("GITHUB_TOKEN", "super-secret"),
             ("GITHUB_USER", "u"),
+            ("ANCHOR_PASSWORD", "login-secret"),
             ("HOME", "/tmp"),
         ]))
         .unwrap();
         let dbg = format!("{cfg:?}");
         assert!(!dbg.contains("super-secret"));
+        assert!(!dbg.contains("login-secret"));
         assert!(dbg.contains("[redacted]"));
     }
 }

@@ -21,9 +21,18 @@
           <span class="mono">{{ github_host }}</span>
         </p>
       </div>
-      <div class="health{% if !healthy %} down{% endif %}" title="GET /healthz">
-        <span class="dot" aria-hidden="true"></span>
-        <span>{% if healthy %}healthy{% else %}down{% endif %}</span>
+      <div class="header-right">
+        <nav class="nav">
+          <a href="/" aria-current="page">Projects</a>
+          <a href="/settings">Settings</a>
+          <form method="post" action="/logout" class="inline-form">
+            <button type="submit" class="linkish">Sign out</button>
+          </form>
+        </nav>
+        <div class="health{% if !healthy %} down{% endif %}" title="GET /healthz">
+          <span class="dot" aria-hidden="true"></span>
+          <span>{% if healthy %}healthy{% else %}down{% endif %}</span>
+        </div>
       </div>
     </header>
 

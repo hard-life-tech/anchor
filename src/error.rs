@@ -20,6 +20,8 @@ pub struct ErrorBody {
 pub fn redact_secrets(s: &str) -> String {
     let mut out = s.to_string();
     out = redact_env_assignment(&out, "GITHUB_TOKEN");
+    out = redact_env_assignment(&out, "ANCHOR_PASSWORD");
+    out = redact_env_assignment(&out, "ANCHOR_SESSION_SECRET");
     out = redact_prefix_token(&out, "github_pat_");
     out = redact_prefix_token(&out, "ghp_");
     out = redact_prefix_token(&out, "gho_");
