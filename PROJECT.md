@@ -84,7 +84,7 @@ Legacy 1:1 dirs (`<name>/{.bare,cursor,opencode}`) are migrated into this layout
 | `GITHUB_API_URL` | no | `https://api.github.com` (or `https://$GITHUB_HOST/api/v3` when host ≠ github.com) | REST API base for listing |
 | `PROJECTS_DIR` | no | `$HOME/projects` | Inside container: `/home/agent/projects` |
 | `TMUX_SESSION` | no | `agents` | Shared tmux session name |
-| `CURSOR_CMD` | no | `cursor-agent` | Left pane command (overridable in Settings UI) |
+| `CURSOR_CMD` | no | `agent` | Left pane Cursor CLI (`agent`; `cursor-agent` alias also installed). Overridable in Settings UI. |
 | `OPENCODE_CMD` | no | `opencode` | Right pane command (overridable in Settings UI) |
 | `PORT` | no | `8080` | HTTP listen |
 | `LOG_LEVEL` | no | `info` | tracing filter |

@@ -14,7 +14,7 @@
 | **`.bares/`** | Directory of bare git clones for a project's members. |
 | **`.bare/`** | Legacy single-repo bare clone path (migrated to `.bares/<owner>__<repo>/`). |
 | **Worktree** | Linked working directory under `cursor/<owner>__<repo>/` or `opencode/<owner>__<repo>/` on branch `agent/cursor` or `agent/opencode`. |
-| **Pane** | A tmux pane running one agent CLI (`cursor-agent` or `opencode`). |
+| **Pane** | A tmux pane running one agent CLI (`agent` / `cursor-agent`, or `opencode`). |
 | **Window** | One tmux window per **project slug** inside the shared session (`TMUX_SESSION`, default `agents`). |
 | **PAT** | GitHub fine-grained personal access token (`GITHUB_TOKEN`), `repo` scope only in v1. |
 | **Anchor process env** | Environment of the Anchor *service* process — where `GITHUB_TOKEN` lives. Must **not** be exported into agent tmux panes. (Formerly called “Forge process env” in drafts.) |

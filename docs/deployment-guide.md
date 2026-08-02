@@ -39,7 +39,7 @@ Copy `.env.example` → `.env` (never commit `.env`):
 | `GITHUB_API_URL` | no | derived from host | Override REST base for GHES |
 | `PROJECTS_DIR` | no | `$HOME/projects` | Inside container: `/home/agent/projects` |
 | `TMUX_SESSION` | no | `agents` | Shared tmux session name |
-| `CURSOR_CMD` | no | `cursor-agent` | Left pane command (Settings UI can override) |
+| `CURSOR_CMD` | no | `agent` | Left pane Cursor CLI (`agent` / `cursor-agent`; Settings UI can override) |
 | `OPENCODE_CMD` | no | `opencode` | Right pane command (Settings UI can override) |
 | `PORT` | no | `8080` | HTTP listen |
 | `LOG_LEVEL` | no | `info` | tracing filter |

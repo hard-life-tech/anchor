@@ -26,6 +26,15 @@ docker compose up --build -d
 - [CONTRIBUTING.md](CONTRIBUTING.md) — setup and PR norms
 - [docs/](docs/README.md) — features, ADRs, API contract, deployment
 
+## Starting agents
+
+1. `docker compose up --build -d` (or `cargo run` with CLIs on `PATH`)
+2. Sign in → create/sync a project
+3. Open **Terminal** on the project (or attach tmux session `agents`)
+4. Complete Cursor / OpenCode auth in each pane on first use
+
+Defaults: left pane `agent` (Cursor CLI), right pane `opencode`. Override via Settings or `CURSOR_CMD` / `OPENCODE_CMD`.
+
 ## Security
 
 `GITHUB_TOKEN` stays in the Anchor **process** environment only. Never export it into agent tmux panes.

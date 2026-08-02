@@ -10,8 +10,9 @@ Ensure a shared tmux session has one window per **project slug** with Cursor CLI
 
 - Session name: `TMUX_SESSION` (default `agents`).
 - Window name: **project slug**.
-- Pane 0: `cd $PROJECTS_DIR/<slug>/cursor && $CURSOR_CMD`
-- Pane 1: `cd $PROJECTS_DIR/<slug>/opencode && $OPENCODE_CMD`
+- Pane 0: `cd $PROJECTS_DIR/<slug>/cursor && $CURSOR_CMD` (default `agent`)
+- Pane 1: `cd $PROJECTS_DIR/<slug>/opencode && $OPENCODE_CMD` (default `opencode`)
+- Agent workspace roots get a valid `opencode.json` when they are not themselves a git checkout (nested multi-repo layout).
 - Check existence before create — **never** kill a live pane on re-sync.
 - On legacy migration, rename window from short repo name → slug when ensuring (idempotent).
 - `send-keys` only for *initial* launch.

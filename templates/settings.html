@@ -42,6 +42,12 @@
         (<span class="mono">{{ env_cursor }}</span> /
         <span class="mono">{{ env_opencode }}</span>).
       </p>
+      <p class="hint">
+        To start agents: sync a project, open <strong>Terminal</strong>, then sign in inside each pane
+        (Cursor OAuth / OpenCode provider). Rebuild the Docker image after Cursor CLI PATH changes;
+        if a pane says <span class="mono">command not found</span>, set Cursor command to
+        <span class="mono">agent</span> (alias <span class="mono">cursor-agent</span> also works).
+      </p>
 
       <form method="post" action="/settings" class="settings-form">
         <fieldset class="agent-block">
@@ -59,8 +65,9 @@
             <input type="text" name="cursor_args" value="{{ cursor_args }}" placeholder="optional flags / model" spellcheck="false" class="mono">
           </label>
           <p class="hint">
-            Install Cursor CLI on the host/container (image runs the official installer).
-            Authenticate inside the terminal pane — Anchor never passes <span class="mono">GITHUB_TOKEN</span> into agent env.
+            Image installs Cursor CLI as <span class="mono">agent</span> (and <span class="mono">cursor-agent</span>)
+            under <span class="mono">/usr/local/bin</span>. Authenticate inside the terminal pane —
+            Anchor never passes <span class="mono">GITHUB_TOKEN</span> into agent env.
           </p>
         </fieldset>
 

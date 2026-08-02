@@ -13,7 +13,7 @@ flowchart TB
   end
 
   subgraph tmux [tmux panes]
-    P1[cursor-agent env — NO GITHUB_TOKEN]
+    P1[agent / cursor-agent env — NO GITHUB_TOKEN]
     P2[opencode env — NO GITHUB_TOKEN]
   end
 
