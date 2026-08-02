@@ -10,6 +10,10 @@ use thiserror::Error;
 pub struct Config {
     pub github_token: String,
     pub github_user: String,
+    /// REST API base, e.g. `https://api.github.com` or `https://ghe.example/api/v3`.
+    pub github_api_url: String,
+    /// Hostname for clone/display, e.g. `github.com` or `ghe.example`.
+    pub github_host: String,
     pub projects_dir: PathBuf,
     pub tmux_session: String,
     pub cursor_cmd: String,
@@ -23,6 +27,8 @@ impl std::fmt::Debug for Config {
         f.debug_struct("Config")
             .field("github_token", &"[redacted]")
             .field("github_user", &self.github_user)
+            .field("github_api_url", &self.github_api_url)
+            .field("github_host", &self.github_host)
             .field("projects_dir", &self.projects_dir)
             .field("tmux_session", &self.tmux_session)
             .field("cursor_cmd", &self.cursor_cmd)
@@ -51,6 +57,7 @@ impl Config {
     pub fn from_env_map(map: &HashMap<String, String>) -> Result<Self, ConfigError> {
         let github_token = required(map, "GITHUB_TOKEN")?;
         let github_user = required(map, "GITHUB_USER")?;
+        let (github_api_url, github_host) = resolve_github_endpoints(map)?;
 
         let home = map
             .get("HOME")
@@ -91,6 +98,8 @@ impl Config {
         Ok(Self {
             github_token,
             github_user,
+            github_api_url,
+            github_host,
             projects_dir: PathBuf::from(projects_dir),
             tmux_session,
             cursor_cmd,
@@ -99,6 +108,47 @@ impl Config {
             log_level,
         })
     }
+}
+
+/// Resolve API base + clone/display host for github.com or GitHub Enterprise Server.
+pub fn resolve_github_endpoints(
+    map: &HashMap<String, String>,
+) -> Result<(String, String), ConfigError> {
+    let host = map
+        .get("GITHUB_HOST")
+        .map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "github.com".into());
+
+    if host.contains("://") || host.contains('/') {
+        return Err(ConfigError::Invalid {
+            key: "GITHUB_HOST",
+            message: format!("expected hostname only (e.g. github.com), got {host}"),
+        });
+    }
+
+    let api = match map.get("GITHUB_API_URL") {
+        Some(raw) => {
+            let u = raw.trim().trim_end_matches('/').to_string();
+            if u.is_empty() {
+                return Err(ConfigError::Invalid {
+                    key: "GITHUB_API_URL",
+                    message: "must not be empty when set".into(),
+                });
+            }
+            if !(u.starts_with("https://") || u.starts_with("http://")) {
+                return Err(ConfigError::Invalid {
+                    key: "GITHUB_API_URL",
+                    message: format!("expected http(s) URL, got {u}"),
+                });
+            }
+            u
+        }
+        None if host == "github.com" => "https://api.github.com".into(),
+        None => format!("https://{host}/api/v3"),
+    };
+
+    Ok((api, host))
 }
 
 fn required(map: &HashMap<String, String>, key: &'static str) -> Result<String, ConfigError> {
@@ -145,6 +195,46 @@ mod tests {
         assert_eq!(cfg.opencode_cmd, "opencode");
         assert_eq!(cfg.port, 8080);
         assert_eq!(cfg.log_level, "info");
+        assert_eq!(cfg.github_api_url, "https://api.github.com");
+        assert_eq!(cfg.github_host, "github.com");
+    }
+
+    #[test]
+    fn config_ghes_defaults_api_from_host() {
+        let cfg = Config::from_env_map(&map(&[
+            ("GITHUB_TOKEN", "t"),
+            ("GITHUB_USER", "u"),
+            ("GITHUB_HOST", "github.example.com"),
+            ("HOME", "/tmp"),
+        ]))
+        .unwrap();
+        assert_eq!(cfg.github_host, "github.example.com");
+        assert_eq!(cfg.github_api_url, "https://github.example.com/api/v3");
+    }
+
+    #[test]
+    fn config_ghes_explicit_api_url() {
+        let cfg = Config::from_env_map(&map(&[
+            ("GITHUB_TOKEN", "t"),
+            ("GITHUB_USER", "u"),
+            ("GITHUB_HOST", "github.example.com"),
+            ("GITHUB_API_URL", "https://github.example.com/api/v3/"),
+            ("HOME", "/tmp"),
+        ]))
+        .unwrap();
+        assert_eq!(cfg.github_api_url, "https://github.example.com/api/v3");
+    }
+
+    #[test]
+    fn config_rejects_bad_host() {
+        let err = Config::from_env_map(&map(&[
+            ("GITHUB_TOKEN", "t"),
+            ("GITHUB_USER", "u"),
+            ("GITHUB_HOST", "https://github.example.com"),
+            ("HOME", "/tmp"),
+        ]))
+        .unwrap_err();
+        assert!(err.to_string().contains("GITHUB_HOST"));
     }
 
     #[test]
