@@ -12,7 +12,7 @@ name = "anchor"
 path = "src/main.rs"
 
 [dependencies]
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -26,6 +26,20 @@ tempfile = "3"
 askama = "0.16"
 askama_web = { version = "0.16", features = ["axum-0.8"] }
 base64 = "0.22"
+cookie = "0.18.1"
+hmac = "0.13.0"
+sha2 = "0.11.0"
+hex = "0.4.3"
+subtle = "2.6.1"
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+portable-pty = "0.9.0"
+futures-util = "0.3.33"
+bytes = "1.12.1"
+rand = "0.10.2"
+time = "0.3.55"
+tower = "0.5.3"
 
 [dev-dependencies]
+http-body-util = "0.1.4"
 tokio = { version = "1", features = ["full", "test-util"] }
+tower = "0.5.3"
