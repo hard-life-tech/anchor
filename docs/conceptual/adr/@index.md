@@ -9,7 +9,8 @@
 | [0005](ADR-0005-oss-saas-split.md) | OSS Core vs private SaaS | Accepted |
 | [0006](ADR-0006-self-host-vs-cloud.md) | Self-host and cloud delivery | Accepted |
 | [0007](ADR-0007-shell-out-git-tmux.md) | Shell out to git/tmux | Accepted |
-| [0008](ADR-0008-no-database.md) | No database in v1 | Accepted |
+| [0008](ADR-0008-no-database.md) | SQLite for settings + project metadata | Accepted |
 | [0009](ADR-0009-github-projects.md) | GitHub Projects for roadmap | Accepted |
+| [0010](ADR-0010-multi-repo-projects.md) | Multi-repo projects (sibling workspace) | Accepted |
 
 Format: context → decision → consequences.

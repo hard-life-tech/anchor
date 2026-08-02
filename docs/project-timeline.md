@@ -70,6 +70,7 @@ Status as of 2026-08-02. v1 scope is defined in [`PROJECT.md`](../PROJECT.md).
 | T08 | Compose e2e on VPS | P1 | T06 |
 | T09 | Create GH org/repo when `gh` ready | P1 | Done |
 | T10 | Publish OSS LICENSE + CONTRIBUTING | P2 | Done |
+| T11 | Multi-repo projects (sibling workspace, SQLite + ADR-0010) | P0 | In progress |
 
 ## Out of scope (tracked, not scheduled)
 

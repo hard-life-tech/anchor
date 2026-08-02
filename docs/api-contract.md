@@ -56,7 +56,7 @@ List repos visible to `GITHUB_TOKEN` (authenticated `GET /user/repos`: private, 
 
 ## `GET /api/projects`
 
-List on-disk projects under `PROJECTS_DIR` with git + tmux status.
+List Anchor projects (SQLite + disk) with member counts, worktree rollup, and tmux status.
 
 **Response `200`:**
 
@@ -64,26 +64,29 @@ List on-disk projects under `PROJECTS_DIR` with git + tmux status.
 {
   "projects": [
     {
-      "name": "anchor",
-      "on_disk": true,
-      "worktrees": [
+      "slug": "platform",
+      "name": "Platform",
+      "member_count": 2,
+      "members": [
         {
-          "agent": "cursor",
-          "branch": "agent/cursor",
-          "ahead": 0,
-          "behind": 0,
-          "dirty": false,
-          "diverged": false
-        },
-        {
-          "agent": "opencode",
-          "branch": "agent/opencode",
-          "ahead": 1,
-          "behind": 0,
-          "dirty": true,
-          "diverged": false
+          "owner": "hard-life-tech",
+          "name": "anchor",
+          "full_name": "hard-life-tech/anchor",
+          "private": false,
+          "default_branch": "main",
+          "worktrees": [
+            {
+              "agent": "cursor",
+              "branch": "agent/cursor",
+              "ahead": 0,
+              "behind": 0,
+              "dirty": false,
+              "diverged": false
+            }
+          ]
         }
       ],
+      "on_disk": true,
       "tmux_window_exists": true,
       "last_synced": "2026-08-02T10:05:00Z",
       "last_sync": {
@@ -92,53 +95,123 @@ List on-disk projects under `PROJECTS_DIR` with git + tmux status.
         "at": "2026-08-02T10:05:00Z",
         "skipped_dirty": 0,
         "skipped_diverged": 0
-      },
-      "visibility": "private"
+      }
     }
   ]
 }
 ```
 
-`last_synced` / `last_sync` come from in-memory sync outcomes in the current process (lost on restart). `visibility` is `public` / `private` when the repo is still visible via the GitHub list API.
-
-Operator settings (agent commands) persist in SQLite — see `/api/settings` and [ADR-0008](conceptual/adr/ADR-0008-no-database.md).
+`last_synced` / `last_sync` come from in-memory sync outcomes in the current process (lost on restart). Project membership persists in SQLite and `.anchor/project.json` — see [ADR-0008](conceptual/adr/ADR-0008-no-database.md) and [ADR-0010](conceptual/adr/ADR-0010-multi-repo-projects.md).
 
 ---
 
-## `POST /api/projects/{repo}/sync`
+## `POST /api/projects`
 
-Idempotent sync. `{repo}` is the short repo name (directory name under `PROJECTS_DIR`).
+Create a project.
+
+**Body:**
+
+```json
+{
+  "name": "Platform",
+  "slug": "platform",
+  "repos": ["hard-life-tech/anchor", "hard-life-tech/docs"]
+}
+```
+
+`slug` is optional — derived from `name` when omitted (lowercase, hyphenated). `repos` entries are `owner/name` (preferred) or a unique short name resolved via GitHub list.
+
+**Response `201`:** project status object (same shape as one element of `GET /api/projects`).
+
+**Errors:** `400` invalid slug/body; `409` slug already exists; `404` unknown GitHub repo.
+
+---
+
+## `GET /api/projects/{slug}`
+
+Detailed status for one project.
+
+**Response `200`:** same shape as one element of `projects` in `GET /api/projects`.
+
+**Errors:** `404` if unknown.
+
+---
+
+## `PATCH /api/projects/{slug}`
+
+Update display `name` (and optionally `default_branch` hint).
+
+**Body:** `{ "name": "…", "default_branch": "main" }` (fields optional).
+
+**Response `200`:** updated project status.
+
+---
+
+## `DELETE /api/projects/{slug}`
+
+Remove project metadata from SQLite and `.anchor/project.json`. Does **not** delete git data on disk (operator must clean up manually). Does not kill tmux panes.
+
+**Response `204`.**
+
+---
+
+## `POST /api/projects/{slug}/repos`
+
+Add member repos.
+
+**Body:** `{ "repos": ["owner/name", …] }`
+
+**Response `200`:** updated project status. Sync is **not** implied — call sync after.
+
+---
+
+## `DELETE /api/projects/{slug}/repos/{owner}/{repo}`
+
+Remove a member from metadata. If worktrees are dirty, skip disk deletion and return `409` with reason; clean members may have bare/worktrees removed when safe.
+
+**Response `200`:** updated project status, or `409` when dirty trees block removal.
+
+---
+
+## `POST /api/projects/{slug}/sync`
+
+Idempotent sync of **all** members + ensure tmux window named `{slug}`.
 
 **Behavior:**
 
-1. If `$PROJECTS_DIR/{repo}/.bare` missing: bare clone, create `cursor/` and `opencode/` worktrees on `agent/cursor` and `agent/opencode` from `origin/<default_branch>`.
-2. If present: `git fetch` in `.bare`. Per worktree, fast-forward from `origin/<default_branch>` only if clean and not diverged; otherwise leave untouched and flag.
-3. Ensure tmux session/window/panes exist. Never restart a live pane.
+1. For each member: if `$PROJECTS_DIR/{slug}/.bares/<owner>__<repo>` missing → bare clone; create `cursor/` and `opencode/` worktrees under `<owner>__<repo>/`.
+2. If present → `git fetch`; per worktree fast-forward only if clean and not diverged.
+3. Ensure tmux session/window/panes with cwd = workspace roots (`…/{slug}/cursor`, `…/opencode`). Never restart a live pane.
 
 **Response `200`:**
 
 ```json
 {
-  "name": "anchor",
-  "created": false,
-  "fetched": true,
-  "worktrees": [
+  "slug": "platform",
+  "repos": [
     {
-      "agent": "cursor",
-      "action": "fast_forwarded",
-      "dirty": false,
-      "diverged": false
-    },
-    {
-      "agent": "opencode",
-      "action": "skipped_dirty",
-      "dirty": true,
-      "diverged": false
+      "full_name": "hard-life-tech/anchor",
+      "created": false,
+      "fetched": true,
+      "worktrees": [
+        {
+          "agent": "cursor",
+          "action": "fast_forwarded",
+          "dirty": false,
+          "diverged": false
+        },
+        {
+          "agent": "opencode",
+          "action": "skipped_dirty",
+          "dirty": true,
+          "diverged": false
+        }
+      ]
     }
   ],
   "tmux": {
     "session": "agents",
-    "window": "anchor",
+    "window": "platform",
     "created_window": false,
     "panes_ensured": true
   }
@@ -147,17 +220,19 @@ Idempotent sync. `{repo}` is the short repo name (directory name under `PROJECTS
 
 Suggested `action` values: `created` | `fast_forwarded` | `already_up_to_date` | `skipped_dirty` | `skipped_diverged`.
 
-**Errors:** `404` unknown GitHub repo; `502` git/GitHub failure (auth failures are classified — e.g. missing/invalid token for private repos — without echoing secrets); `409` optional if policy later forbids sync — not required in v1.
+---
+
+## `POST /api/projects/{slug}/repos/{owner}/{repo}/sync`
+
+Sync a **single** member into an existing project (incremental add path after `POST …/repos`).
+
+**Response `200`:** same per-repo object as one element of `repos` in the full sync response, plus `tmux` ensure.
 
 ---
 
-## `GET /api/projects/{repo}/status`
+## Legacy: `POST /api/projects/{repo}/sync`
 
-Detailed status for one project.
-
-**Response `200`:** same shape as one element of `projects` in `GET /api/projects`, plus optional raw fields for debugging (branch SHAs). Still no secrets.
-
-**Errors:** `404` if not on disk.
+Thin wrap: treat `{repo}` as a short GitHub name, ensure a single-member project (slug = short name when unique), then sync. Prefer the project-scoped routes above for multi-repo work.
 
 ---
 
@@ -178,11 +253,13 @@ Read or update operator settings (Cursor/OpenCode commands, args, enable flags, 
 | `POST` | `/logout` | Clears session |
 | `GET` | `/` | Shell + skeletons only (Askama); auth required |
 | `GET` | `/settings` | Agent config UI |
-| `GET` | `/projects/{repo}/terminal` | xterm.js page (`?agent=cursor\|opencode`) |
-| `WS` | `/ws/terminal/{repo}/{agent}` | PTY attach to tmux pane (auth via cookie) |
-| `GET` | `/partials/projects` | Project rows (disk + git + tmux) |
-| `GET` | `/partials/repos` | GitHub repo list (`/user/repos`, short TTL cache) |
-| `POST` | `/partials/projects/{repo}/sync` | Sync + OOB flash; invalidates repo cache |
+| `GET` | `/projects/{slug}` | Project detail (members, sync, terminal links) |
+| `GET` | `/projects/{slug}/terminal` | xterm.js page (`?agent=cursor\|opencode`) |
+| `WS` | `/ws/terminal/{slug}/{agent}` | PTY attach to tmux pane (auth via cookie) |
+| `GET` | `/partials/projects` | Project rows (member count + sync rollup) |
+| `GET` | `/partials/repos` | GitHub repo list with “Add to project…” |
+| `POST` | `/partials/projects` | Create project (form) |
+| `POST` | `/partials/projects/{slug}/sync` | Sync all members + OOB flash |
 
 `GET /` paints immediately. htmx loads `/partials/*` on `hx-trigger="load"`. Dashboard is not a SPA. See [design-system.md](design-system.md).
 

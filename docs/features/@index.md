@@ -5,7 +5,7 @@ Feature specs for Anchor. MVP maps to `PROJECT.md` acceptance criteria.
 | ID | Feature | Phase | Spec |
 |----|---------|-------|------|
 | F-001 | GitHub repo listing | MVP | [repo-listing.md](repo-listing.md) |
-| F-002 | Project sync (bare + worktrees) | MVP | [project-sync.md](project-sync.md) |
+| F-002 | Project sync (multi-repo sibling workspace) | MVP | [project-sync.md](project-sync.md) |
 | F-003 | tmux agent orchestration | MVP | [tmux-orchestration.md](tmux-orchestration.md) |
 | F-004 | Project status API + dashboard | MVP | [status-dashboard.md](status-dashboard.md) |
 | F-005 | Health endpoint | MVP | [healthz.md](healthz.md) |

@@ -20,12 +20,13 @@ Operators run multiple AI coding agents against many GitHub repos. Sessions die 
 ## 2. Goals (v1)
 
 - List GitHub repos for a configured user/token.
-- Sync a repo to disk as a bare clone plus two agent worktrees.
-- Ensure a tmux window with two panes (Cursor CLI + OpenCode) without killing live work.
+- Create **named projects** that own one or more GitHub repos (sibling workspace layout).
+- Sync project members to disk as owner-scoped bare clones plus agent worktrees.
+- Ensure one tmux window per project slug with two panes (Cursor CLI + OpenCode) without killing live work.
 - Expose a small HTTP API and a minimal server-rendered dashboard.
 - Keep `GITHUB_TOKEN` in the Anchor process environment only.
 - Dashboard login (session cookie + `ANCHOR_PASSWORD`).
-- SQLite for operator settings (agent commands / prefs).
+- SQLite for operator settings and project membership (mirrored to `.anchor/project.json`).
 - In-browser terminals (xterm.js) attached to agent tmux panes.
 
 ## 3. Non-goals (v1)
@@ -50,15 +51,22 @@ Do not implement Management SaaS inside this repository.
 Container runs as non-root user `agent` (uid/gid 1000 by default). Primary volume: `/home/agent`.
 
 ```
-$PROJECTS_DIR/<repo>/
-  .bare/       # bare clone
-  cursor/      # worktree on agent/cursor
-  opencode/    # worktree on agent/opencode
+$PROJECTS_DIR/<project-slug>/
+  .anchor/
+    project.json          # id, name, members[], defaults
+  .bares/
+    <owner>__<repo>/      # bare clone (owner-scoped)
+  cursor/
+    <owner>__<repo>/      # worktree on agent/cursor
+  opencode/
+    <owner>__<repo>/      # worktree on agent/opencode
 ```
 
-Shared tmux session `$TMUX_SESSION` (default `agents`); one window per repo.
+Agent pane cwd = `$PROJECTS_DIR/<slug>/cursor` or `…/opencode` (parent of member worktrees). Shared tmux session `$TMUX_SESSION` (default `agents`); **one window per project slug**.
 
-SQLite settings DB default: `$HOME/projects/anchor.db` (override with `DATABASE_URL` / `ANCHOR_DB`).
+SQLite DB default: `$HOME/projects/anchor.db` (override with `DATABASE_URL` / `ANCHOR_DB`) — settings + project metadata.
+
+Legacy 1:1 dirs (`<name>/{.bare,cursor,opencode}`) are migrated into this layout on startup / first sync (see [ADR-0010](docs/conceptual/adr/ADR-0010-multi-repo-projects.md)).
 
 ## 6. Environment
 
@@ -99,17 +107,18 @@ See [docs/api-contract.md](docs/api-contract.md).
 
 - `GET /healthz` — public
 - `GET|POST /login`, `POST /logout`
-- `GET /api/repos`, `GET /api/projects`, sync/status — **auth required**
+- `GET /api/repos`, `GET|POST /api/projects`, project sync/members/status — **auth required**
 - `GET|POST /api/settings`, `GET|POST /settings`
-- `GET /projects/{repo}/terminal`, `WS /ws/terminal/{repo}/{agent}`
+- `GET /projects/{slug}/terminal`, `WS /ws/terminal/{slug}/{agent}`
 - `GET /` — Askama dashboard shell (skeletons); lists via `/partials/*`
 
 ## 9. Sync rules
 
-1. Missing `.bare` → bare clone; create `cursor/` and `opencode/` worktrees from `origin/<default_branch>`.
+1. For each project member: missing `.bares/<owner>__<repo>` → bare clone; create `cursor|opencode/<owner>__<repo>/` worktrees from `origin/<default_branch>`.
 2. Present → `git fetch`; per worktree, `--ff-only` merge from `origin/<default>` only if clean and not diverged; otherwise skip and report.
-3. Ensure tmux session/window/panes. Never kill or restart a live pane.
-4. All git/tmux ops idempotent. No force-push. No overwrite of dirty worktrees.
+3. Ensure tmux session/window named by **project slug**; pane cwds = agent workspace roots. Never kill or restart a live pane.
+4. Removing a member does not force-delete dirty worktrees (skip + surface error).
+5. All git/tmux ops idempotent. No force-push. No overwrite of dirty worktrees.
 
 ## 10. Security invariants
 
@@ -134,12 +143,13 @@ GitHub App, webhooks, multi-user Core, Management SaaS features.
 
 ## 14. MVP acceptance criteria
 
-- [ ] Fresh `POST /api/projects/{repo}/sync` creates `.bare` + both worktrees + tmux window with panes.
+- [ ] Fresh `POST /api/projects` + `POST /api/projects/{slug}/sync` creates sibling layout (bares + worktrees) + tmux window with panes.
 - [ ] Re-sync is idempotent (no duplicate windows/worktrees, no force overwrite).
 - [ ] Dirty or diverged worktrees are reported and left untouched.
-- [x] `GET /api/projects` is accurate after container restart (tmux gone, disk intact) — inventory from disk; Compose e2e with live PAT still open.
+- [x] `GET /api/projects` is accurate after container restart (tmux gone, disk intact) — inventory from disk/DB; Compose e2e with live PAT still open.
 - [ ] `GET /healthz` returns `OK`; Compose brings up with `GITHUB_TOKEN` + `GITHUB_USER` + `ANCHOR_PASSWORD`.
 - [x] Token never appears in API responses, logs, or agent pane environments — scrub + redaction unit-tested (API JSON, tracing writer, shell stderr); live pane Compose e2e open.
 - [x] Unauthenticated API/dashboard/terminal requests are rejected (except `/healthz` / login / static).
 - [x] Settings persist in SQLite and override agent launch commands at sync time.
 - [x] Browser terminal attaches to an existing tmux window pane via WebSocket + PTY.
+- [ ] Legacy 1:1 project dirs migrate into sibling layout without destroying dirty work.

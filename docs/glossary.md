@@ -8,11 +8,14 @@
 | **Core (OSS)** | Open-source engine: clone/fetch, worktrees, tmux panes, HTTP API, single-operator dashboard. |
 | **Management SaaS** | Private, company-distributed features: multi-tenant cloud, billing, org policy, fleets. Not in v1. |
 | **Operator** | The single human running an Anchor instance (v1 is single-operator, not multi-tenant). |
-| **Project** | A GitHub repo mirrored under `PROJECTS_DIR/<repo>/` with `.bare/`, `cursor/`, `opencode/`. |
-| **`.bare/`** | Bare git clone — source of truth for history. Not a working tree. |
-| **Worktree** | Linked working directory (`cursor/` or `opencode/`) on branch `agent/cursor` or `agent/opencode`. |
+| **Project** | Named Anchor scope under `PROJECTS_DIR/<slug>/` with member GitHub repos, sibling worktrees, and one tmux window. |
+| **Member repo** | A GitHub repo belonging to a project, addressed as `owner/name`, stored under `.bares/<owner>__<name>/`. |
+| **Repo key** | Filesystem id `owner__name` for bares/worktrees (owner-scoped; avoids short-name collisions). |
+| **`.bares/`** | Directory of bare git clones for a project's members. |
+| **`.bare/`** | Legacy single-repo bare clone path (migrated to `.bares/<owner>__<repo>/`). |
+| **Worktree** | Linked working directory under `cursor/<owner>__<repo>/` or `opencode/<owner>__<repo>/` on branch `agent/cursor` or `agent/opencode`. |
 | **Pane** | A tmux pane running one agent CLI (`cursor-agent` or `opencode`). |
-| **Window** | One tmux window per repo inside the shared session (`TMUX_SESSION`, default `agents`). |
+| **Window** | One tmux window per **project slug** inside the shared session (`TMUX_SESSION`, default `agents`). |
 | **PAT** | GitHub fine-grained personal access token (`GITHUB_TOKEN`), `repo` scope only in v1. |
 | **Anchor process env** | Environment of the Anchor *service* process — where `GITHUB_TOKEN` lives. Must **not** be exported into agent tmux panes. (Formerly called “Forge process env” in drafts.) |
 | **Agent user** | Non-root OS user (`agent`, uid 1000 by default) that runs Anchor and agent CLIs inside the container. |
