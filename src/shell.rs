@@ -24,10 +24,11 @@ impl CmdOutput {
         if self.success() {
             Ok(())
         } else {
+            // Scrub PAT shapes from stderr before they enter anyhow/API/logs.
+            let stderr = crate::error::redact_secrets(self.stderr.trim());
             Err(anyhow!(
-                "{label} failed (exit {}): {}",
-                self.status,
-                self.stderr.trim()
+                "{label} failed (exit {}): {stderr}",
+                self.status
             ))
         }
     }
@@ -104,5 +105,18 @@ mod tests {
             "GITHUB_TOKEN must not appear in child env"
         );
         assert!(out.stdout.lines().any(|l| l == "ANCHOR_TEST_KEEP=1"));
+    }
+
+    #[test]
+    fn ensure_success_redacts_pat_in_stderr() {
+        let out = CmdOutput {
+            status: 1,
+            stdout: String::new(),
+            stderr: "fatal: Authorization: Bearer ghp_ShellLeakToken42 denied".into(),
+        };
+        let err = out.ensure_success("git fetch").unwrap_err();
+        let msg = err.to_string();
+        assert!(!msg.contains("ShellLeakToken42"), "leaked: {msg}");
+        assert!(msg.contains("[redacted]"));
     }
 }

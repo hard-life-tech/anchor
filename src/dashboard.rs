@@ -109,7 +109,7 @@ async fn partial_sync(
             Ok(Html(format!("{flash}{projects_html}")).into_response())
         }
         Err(e) => {
-            let msg = html_escape(&e.to_string());
+            let msg = html_escape(&e.safe_message());
             let flash = format!(
                 r#"<div class="flash error" id="flash" hx-swap-oob="true">Sync failed: {msg}</div>"#
             );

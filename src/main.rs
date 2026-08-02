@@ -33,6 +33,7 @@ async fn main() -> anyhow::Result<()> {
             EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new(&config.log_level)),
         )
+        .with_writer(crate::error::RedactingMakeWriter::stdout())
         .init();
 
     let github = GitHubClient::new(config.github_token.clone(), config.github_user.clone());
